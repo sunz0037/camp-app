@@ -119,12 +119,22 @@ public class AuthController {
     }
     
     /**
-     * 获取当前用户信息（暂时返回错误，需要从Token中解析用户信息）
+     * 获取当前用户信息
+     * 
+     * @param userId 用户ID（从请求头 X-User-Id 获取）
+     * @return 当前用户信息
      */
     @GetMapping("/me")
-    public BaseResponse<LoginResponse.UserInfo> getCurrentUser() {
-        log.info("获取当前用户信息请求");
-        // TODO: 从JWT Token中解析用户信息
-        return BaseResponse.error(501, "功能暂未实现，需要JWT Token支持");
+    public BaseResponse<LoginResponse.UserInfo> getCurrentUser(
+            @RequestHeader(value = "X-User-Id", required = false) Long userId) {
+        log.info("获取当前用户信息请求: userId={}", userId);
+        
+        try {
+            LoginResponse.UserInfo userInfo = authService.getCurrentUser(userId);
+            return BaseResponse.ok(userInfo);
+        } catch (RuntimeException e) {
+            log.error("获取当前用户信息失败: {}", e.getMessage());
+            return BaseResponse.error(400, e.getMessage());
+        }
     }
 }

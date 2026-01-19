@@ -41,7 +41,6 @@ CREATE TABLE IF NOT EXISTS students (
     status TINYINT NOT NULL DEFAULT 1 COMMENT '学籍状态：0-休学，1-在读，2-毕业，3-退学',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     INDEX idx_student_no (student_no),
     INDEX idx_grade (grade),
     INDEX idx_class_name (class_name),
@@ -61,7 +60,6 @@ CREATE TABLE IF NOT EXISTS emergency_contacts (
     is_primary TINYINT NOT NULL DEFAULT 0 COMMENT '是否主要联系人：0-否，1-是',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
     INDEX idx_student_id (student_id),
     INDEX idx_is_primary (is_primary)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='学生应急联系人表';
@@ -81,7 +79,6 @@ CREATE TABLE IF NOT EXISTS courses (
     status TINYINT NOT NULL DEFAULT 1 COMMENT '状态：0-停用，1-启用',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    FOREIGN KEY (teacher_id) REFERENCES users(id) ON DELETE SET NULL,
     INDEX idx_course_code (course_code),
     INDEX idx_semester (semester),
     INDEX idx_academic_year (academic_year)
@@ -103,9 +100,6 @@ CREATE TABLE IF NOT EXISTS exam_scores (
     created_by BIGINT COMMENT '录入人ID',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
-    FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
-    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
     INDEX idx_student_id (student_id),
     INDEX idx_course_id (course_id),
     INDEX idx_semester (semester),
@@ -130,7 +124,6 @@ CREATE TABLE IF NOT EXISTS announcements (
     status TINYINT NOT NULL DEFAULT 1 COMMENT '状态：0-草稿，1-已发布，2-已撤回',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    FOREIGN KEY (publisher_id) REFERENCES users(id) ON DELETE RESTRICT,
     INDEX idx_publisher_id (publisher_id),
     INDEX idx_category (category),
     INDEX idx_publish_time (publish_time),
@@ -160,8 +153,6 @@ CREATE TABLE IF NOT EXISTS visitor_registrations (
     remark VARCHAR(500) COMMENT '备注',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    FOREIGN KEY (visit_target_user_id) REFERENCES users(id) ON DELETE SET NULL,
-    FOREIGN KEY (receptionist_id) REFERENCES users(id) ON DELETE SET NULL,
     INDEX idx_visitor_name (visitor_name),
     INDEX idx_visitor_phone (visitor_phone),
     INDEX idx_visit_date (visit_date),
@@ -206,8 +197,6 @@ CREATE TABLE IF NOT EXISTS role_permissions (
     role_id BIGINT NOT NULL COMMENT '角色ID',
     permission_id BIGINT NOT NULL COMMENT '权限ID',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE,
-    FOREIGN KEY (permission_id) REFERENCES permissions(id) ON DELETE CASCADE,
     UNIQUE KEY uk_role_permission (role_id, permission_id),
     INDEX idx_role_id (role_id),
     INDEX idx_permission_id (permission_id)
@@ -219,8 +208,6 @@ CREATE TABLE IF NOT EXISTS user_roles (
     user_id BIGINT NOT NULL COMMENT '用户ID',
     role_id BIGINT NOT NULL COMMENT '角色ID',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE,
     UNIQUE KEY uk_user_role (user_id, role_id),
     INDEX idx_user_id (user_id),
     INDEX idx_role_id (role_id)
@@ -236,7 +223,6 @@ CREATE TABLE IF NOT EXISTS teacher_classes (
     is_class_teacher TINYINT NOT NULL DEFAULT 0 COMMENT '是否班主任：0-否，1-是',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    FOREIGN KEY (teacher_id) REFERENCES users(id) ON DELETE CASCADE,
     UNIQUE KEY uk_teacher_class (teacher_id, grade, class_name),
     INDEX idx_teacher_id (teacher_id),
     INDEX idx_grade_class (grade, class_name)
@@ -251,7 +237,6 @@ CREATE TABLE IF NOT EXISTS grade_admin_grades (
     description VARCHAR(255) COMMENT '说明',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    FOREIGN KEY (admin_id) REFERENCES users(id) ON DELETE CASCADE,
     UNIQUE KEY uk_admin_grade (admin_id, grade),
     INDEX idx_admin_id (admin_id),
     INDEX idx_grade (grade)
@@ -271,13 +256,13 @@ CREATE TABLE IF NOT EXISTS data_query_permissions (
     status TINYINT NOT NULL DEFAULT 1 COMMENT '状态：0-禁用，1-启用',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE,
     INDEX idx_user_id (user_id),
     INDEX idx_role_id (role_id),
     INDEX idx_data_type (data_type),
-    INDEX idx_query_scope (query_scope),
-    CHECK (user_id IS NOT NULL OR role_id IS NOT NULL)
+    INDEX idx_query_scope (query_scope)
+    -- 注意：CHECK 约束在 MySQL 5.7 及之前版本中会被忽略，在 MySQL 8.0+ 中才真正支持
+    -- 如果需要兼容旧版本，请在应用层进行验证
+    -- CHECK (user_id IS NOT NULL OR role_id IS NOT NULL)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='数据查询权限管理表（遵循权限最小化原则，防止信息泄露）';
 
 -- 15. 班级每日考勤汇总表（按班级/日期汇总应到、实到、缺勤）
@@ -295,7 +280,6 @@ CREATE TABLE IF NOT EXISTS class_attendance_daily (
     remark VARCHAR(255) COMMENT '备注',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    FOREIGN KEY (recorder_id) REFERENCES users(id) ON DELETE SET NULL,
     UNIQUE KEY uk_class_date (attendance_date, grade, class_name),
     INDEX idx_attendance_date (attendance_date),
     INDEX idx_grade_class (grade, class_name),
@@ -320,15 +304,14 @@ CREATE TABLE IF NOT EXISTS student_attendance_records (
     recorder_id BIGINT COMMENT '记录人（教师/班主任）用户ID',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
-    FOREIGN KEY (notified_contact_id) REFERENCES emergency_contacts(id) ON DELETE SET NULL,
-    FOREIGN KEY (recorder_id) REFERENCES users(id) ON DELETE SET NULL,
     UNIQUE KEY uk_student_date (student_id, attendance_date),
     INDEX idx_attendance_date (attendance_date),
     INDEX idx_grade_class (grade, class_name),
     INDEX idx_status (status),
-    INDEX idx_reason_type (reason_type),
-    CHECK (status IN (1,2,3,4))
+    INDEX idx_reason_type (reason_type)
+    -- 注意：CHECK 约束在 MySQL 5.7 及之前版本中会被忽略，在 MySQL 8.0+ 中才真正支持
+    -- 如果需要兼容旧版本，请在应用层进行验证
+    -- CHECK (status IN (1,2,3,4))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='学生每日考勤记录表（按学生记录异常/缺勤原因，支持家长确认）';
 
 -- ============================================
@@ -342,7 +325,7 @@ INSERT INTO roles (role_code, role_name, description) VALUES
 ('GRADE_ADMIN', '年级管理员', '年级管理员角色，仅可查询该年级相关信息（权限最小化原则）'),
 ('STUDENT', '学生', '学生角色，可查看个人信息和成绩'),
 ('LOGISTICS', '后勤人员', '后勤人员，可管理来访登记')
-ON DUPLICATE KEY UPDATE role_name=VALUES(role_name);
+ON DUPLICATE KEY UPDATE role_name=role_name;
 
 -- 插入基础权限（示例）
 INSERT INTO permissions (permission_code, permission_name, resource_type, resource_path, description) VALUES
@@ -356,7 +339,7 @@ INSERT INTO permissions (permission_code, permission_name, resource_type, resour
 ('visitor:view', '查看来访登记', 'data', '/api/visitors', '查看来访登记权限'),
 ('visitor:manage', '管理来访登记', 'data', '/api/visitors', '管理来访登记权限'),
 ('permission:manage', '权限管理', 'data', '/api/permissions', '权限管理权限')
-ON DUPLICATE KEY UPDATE permission_name=VALUES(permission_name);
+ON DUPLICATE KEY UPDATE permission_name=permission_name;
 
 -- ============================================
 -- 初始化数据查询权限配置（遵循权限最小化原则）
@@ -367,49 +350,49 @@ ON DUPLICATE KEY UPDATE permission_name=VALUES(permission_name);
 INSERT INTO data_query_permissions (role_id, data_type, query_scope, scope_value, field_permissions, can_export, can_print) 
 SELECT r.id, 'student', 'class', NULL, NULL, 0, 0
 FROM roles r WHERE r.role_code = 'TEACHER'
-ON DUPLICATE KEY UPDATE query_scope=VALUES(query_scope);
+ON DUPLICATE KEY UPDATE query_scope=query_scope;
 
 INSERT INTO data_query_permissions (role_id, data_type, query_scope, scope_value, field_permissions, can_export, can_print) 
 SELECT r.id, 'score', 'class', NULL, NULL, 0, 0
 FROM roles r WHERE r.role_code = 'TEACHER'
-ON DUPLICATE KEY UPDATE query_scope=VALUES(query_scope);
+ON DUPLICATE KEY UPDATE query_scope=query_scope;
 
 INSERT INTO data_query_permissions (role_id, data_type, query_scope, scope_value, field_permissions, can_export, can_print) 
 SELECT r.id, 'emergency_contact', 'class', NULL, NULL, 0, 0
 FROM roles r WHERE r.role_code = 'TEACHER'
-ON DUPLICATE KEY UPDATE query_scope=VALUES(query_scope);
+ON DUPLICATE KEY UPDATE query_scope=query_scope;
 
 -- 年级管理员角色：仅可查询该年级相关信息
 -- 注意：实际使用时，需要在用户表中记录年级管理员所管理的年级信息
 INSERT INTO data_query_permissions (role_id, data_type, query_scope, scope_value, field_permissions, can_export, can_print) 
 SELECT r.id, 'student', 'grade', NULL, NULL, 0, 0
 FROM roles r WHERE r.role_code = 'GRADE_ADMIN'
-ON DUPLICATE KEY UPDATE query_scope=VALUES(query_scope);
+ON DUPLICATE KEY UPDATE query_scope=query_scope;
 
 INSERT INTO data_query_permissions (role_id, data_type, query_scope, scope_value, field_permissions, can_export, can_print) 
 SELECT r.id, 'score', 'grade', NULL, NULL, 0, 0
 FROM roles r WHERE r.role_code = 'GRADE_ADMIN'
-ON DUPLICATE KEY UPDATE query_scope=VALUES(query_scope);
+ON DUPLICATE KEY UPDATE query_scope=query_scope;
 
 INSERT INTO data_query_permissions (role_id, data_type, query_scope, scope_value, field_permissions, can_export, can_print) 
 SELECT r.id, 'emergency_contact', 'grade', NULL, NULL, 0, 0
 FROM roles r WHERE r.role_code = 'GRADE_ADMIN'
-ON DUPLICATE KEY UPDATE query_scope=VALUES(query_scope);
+ON DUPLICATE KEY UPDATE query_scope=query_scope;
 
 -- 学生角色：仅可查询自己的信息
 INSERT INTO data_query_permissions (role_id, data_type, query_scope, scope_value, field_permissions, can_export, can_print) 
 SELECT r.id, 'student', 'own', NULL, NULL, 0, 0
 FROM roles r WHERE r.role_code = 'STUDENT'
-ON DUPLICATE KEY UPDATE query_scope=VALUES(query_scope);
+ON DUPLICATE KEY UPDATE query_scope=query_scope;
 
 INSERT INTO data_query_permissions (role_id, data_type, query_scope, scope_value, field_permissions, can_export, can_print) 
 SELECT r.id, 'score', 'own', NULL, NULL, 0, 0
 FROM roles r WHERE r.role_code = 'STUDENT'
-ON DUPLICATE KEY UPDATE query_scope=VALUES(query_scope);
+ON DUPLICATE KEY UPDATE query_scope=query_scope;
 
 -- 后勤人员：可查看和管理来访登记
 INSERT INTO data_query_permissions (role_id, data_type, query_scope, scope_value, field_permissions, can_export, can_print) 
 SELECT r.id, 'visitor', 'all', NULL, NULL, 1, 1
 FROM roles r WHERE r.role_code = 'LOGISTICS'
-ON DUPLICATE KEY UPDATE query_scope=VALUES(query_scope);
+ON DUPLICATE KEY UPDATE query_scope=query_scope;
 

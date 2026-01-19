@@ -263,6 +263,27 @@ public class AuthServiceImpl implements AuthService {
         log.info("密码修改成功: userId={}", userId);
     }
     
+    @Override
+    @Transactional(readOnly = true)
+    public LoginResponse.UserInfo getCurrentUser(Long userId) {
+        log.info("获取当前用户信息: userId={}", userId);
+        
+        if (userId == null) {
+            throw new RuntimeException("用户ID不能为空，请先登录");
+        }
+        
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("用户不存在"));
+        
+        return LoginResponse.UserInfo.builder()
+                .id(user.getId())
+                .username(user.getUsername())
+                .realName(user.getRealName())
+                .userType(user.getUserType())
+                .avatarUrl(user.getAvatarUrl())
+                .build();
+    }
+    
     /**
      * 通过学号查找学生对应的用户
      */

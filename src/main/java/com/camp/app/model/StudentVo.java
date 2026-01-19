@@ -11,6 +11,10 @@ public class StudentVo {
     private Long userId;
     private String studentNo;
     
+    // 用户信息（从User表关联获取）
+    private String realName; // 学生姓名（从User表获取）
+    private String username; // 用户名（从User表获取）
+    
     // 保留冗余字段用于显示
     private String grade;
     private String className;

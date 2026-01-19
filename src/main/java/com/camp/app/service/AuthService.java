@@ -41,5 +41,14 @@ public interface AuthService {
      * @throws RuntimeException 如果旧密码错误或新密码不符合要求
      */
     void changePassword(Long userId, String oldPassword, String newPassword);
+    
+    /**
+     * 获取当前用户信息
+     * 
+     * @param userId 用户ID（从请求头获取）
+     * @return 用户信息
+     * @throws RuntimeException 如果用户不存在
+     */
+    LoginResponse.UserInfo getCurrentUser(Long userId);
 }
 

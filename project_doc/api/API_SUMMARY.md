@@ -1,27 +1,39 @@
 # 校园OA系统API接口清单（摘要版）
 
 ## 接口统计
-- **总接口数**：88个
-- **模块数**：16个
-- **已实现**：47个（53%）
-- **部分实现**：15个（17%）
-- **未实现**：26个（30%）
+- **总接口数**：95个
+- **模块数**：18个
+- **已实现**：58个（61%）
+- **部分实现**：12个（13%）
+- **未实现**：25个（26%）
+
+**最后更新**：2024年12月
 
 > 📋 **实现状态详情**：请查看 `API_STATUS.md` 文档
 
 ---
 
-## 一、用户认证与授权（5个接口）❌ 未实现
+## 一、用户认证与授权（7个接口）✅ 已实现（5个核心接口）
 
-**用途**：用户登录认证、Token管理、密码修改等安全相关功能
+**用途**：用户登录认证、Token管理、密码修改、密码重置等安全相关功能
 
 | 接口路径 | 方法 | 功能说明 | 状态 |
 |---------|------|---------|------|
-| `/api/auth/login` | POST | 用户登录 | ❌ |
-| `/api/auth/logout` | POST | 用户登出 | ❌ |
+| `/api/auth/login` | POST | 用户登录（支持学生、教工） | ✅ |
+| `/api/auth/activate` | POST | 激活用户（首次登录设置密码） | ✅ |
+| `/api/auth/logout` | POST | 用户登出 | 🟡 |
 | `/api/auth/refresh` | POST | 刷新Token | ❌ |
 | `/api/auth/me` | GET | 获取当前用户信息 | ❌ |
-| `/api/auth/password` | PUT | 修改密码 | ❌ |
+| `/api/auth/password` | PUT | 修改密码 | ✅ |
+| `/api/auth/send-verification-code` | POST | 发送验证码（密码重置） | ✅ |
+| `/api/auth/reset-password` | POST | 重置密码 | ✅ |
+
+**实现说明**：
+- ✅ 登录功能已完整实现，支持学生（学号）和教工（工号）登录
+- ✅ 首次登录激活功能已实现
+- ✅ 密码修改和重置功能已实现
+- 🟡 登出功能已实现框架，Token黑名单机制待完善
+- ❌ Token刷新和获取当前用户信息需要JWT Token支持
 
 ---
 
@@ -113,6 +125,38 @@
 | `/api/courses/{id}` | GET | 查询课程详情 | ✅ |
 | `/api/courses/{id}` | PUT | 更新课程信息 | ✅ |
 | `/api/courses/{id}` | DELETE | 删除课程 | ✅ |
+
+---
+
+## 六-1、班级授课科目关联管理（8个接口）✅ 已实现
+
+**用途**：管理班级与授课科目的关联关系
+
+| 接口路径 | 方法 | 功能说明 | 状态 |
+|---------|------|---------|------|
+| `/api/class-courses` | POST | 添加班级授课科目 | ✅ |
+| `/api/class-courses/batch` | POST | 批量添加班级授课科目 | ✅ |
+| `/api/class-courses/by-class/{classId}` | GET | 查询班级的所有授课科目 | ✅ |
+| `/api/class-courses/by-class/{classId}/enabled` | GET | 查询班级的启用授课科目 | ✅ |
+| `/api/class-courses/{id}` | GET | 查询详情 | ✅ |
+| `/api/class-courses/{id}` | PUT | 更新班级授课科目 | ✅ |
+| `/api/class-courses/{id}` | DELETE | 删除班级授课科目 | ✅ |
+| `/api/class-courses/batch` | DELETE | 批量删除班级授课科目 | ✅ |
+
+---
+
+## 六-2、考试安排管理（6个接口）✅ 已实现
+
+**用途**：考试安排的创建、查询、更新、删除、取消等管理功能
+
+| 接口路径 | 方法 | 功能说明 | 状态 |
+|---------|------|---------|------|
+| `/api/exam-schedules` | POST | 创建考试安排 | ✅ |
+| `/api/exam-schedules` | GET | 查询考试安排列表（多条件过滤、分页） | ✅ |
+| `/api/exam-schedules/{id}` | GET | 查询考试安排详情 | ✅ |
+| `/api/exam-schedules/{id}` | PUT | 更新考试安排 | ✅ |
+| `/api/exam-schedules/{id}` | DELETE | 删除考试安排 | ✅ |
+| `/api/exam-schedules/{id}/cancel` | PUT | 取消考试安排 | ✅ |
 
 ---
 
