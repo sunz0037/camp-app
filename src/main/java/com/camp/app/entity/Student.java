@@ -29,7 +29,7 @@ public class Student {
     @JoinColumn(name = "grade_id")
     private Grade gradeEntity; // 新增：年级实体关联
 
-    @Column(name = "grade_id")
+    @Column(name = "grade_id", insertable = false, updatable = false)
     private Long gradeId; // 新增：年级ID（方便查询）
 
     @Column(length = 50)
@@ -39,7 +39,7 @@ public class Student {
     @JoinColumn(name = "class_id")
     private Class classEntity; // 新增：班级实体关联
 
-    @Column(name = "class_id")
+    @Column(name = "class_id", insertable = false, updatable = false)
     private Long classId; // 新增：班级ID（方便查询）
 
     @Column(length = 100)
