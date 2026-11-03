@@ -1,5 +1,7 @@
 # 数据库初始化说明
 
+首期请改看仓库根目录 `db/README.md`。本文对应历史 `src/main/resources/db/schema.sql`，成绩和访客不属于首期必跑。
+
 ## 数据库信息
 
 - **数据库名**：`camp`
