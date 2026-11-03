@@ -1,6 +1,6 @@
 # 校园OA系统数据库设计文档
 
-首期以仓库根目录 [db/README.md](../../db/README.md)、[`db/migration`](../../db/migration)、[`db/seed`](../../db/seed) 和 [PHASE1_SCHEMA.md](./PHASE1_SCHEMA.md) 为准，接口对照见 [PHASE1.md](./PHASE1.md)。下文是旧版说明，其中的成绩、访客和 `GRADE_ADMIN` / `LOGISTICS` 已不是首期范围，不作为首期执行入口。
+首期以仓库根目录 [db/README.md](../../db/README.md)、[`db/migration`](../../db/migration)、[`db/seed`](../../db/seed) 和 [PHASE1_SCHEMA.md](./PHASE1_SCHEMA.md) 为准，接口对照见 [PHASE1.md](./PHASE1.md)。二期增量见 [PHASE2_SCHEMA.md](./PHASE2_SCHEMA.md)。下文是旧版说明，其中的成绩、访客和 `GRADE_ADMIN` / `LOGISTICS` 已不是首期范围，不作为首期执行入口，也不要按旧表名建二期考试和访客。
 
 ## 一、数据库概述
 
