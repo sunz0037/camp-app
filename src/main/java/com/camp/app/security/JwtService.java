@@ -30,7 +30,8 @@ public class JwtService {
         this.refreshTtlSeconds = refreshTtlSeconds;
     }
 
-    public String createAccessToken(Long userId, List<String> roles, List<String> permissions, boolean mustChangePassword) {
+    public String createAccessToken(Long userId, List<String> roles, List<String> permissions,
+                                    boolean mustChangePassword, int credentialVersion) {
         Instant now = Instant.now();
         return Jwts.builder()
                 .subject(String.valueOf(userId))
@@ -38,6 +39,7 @@ public class JwtService {
                 .claim("roles", roles)
                 .claim("perms", permissions)
                 .claim("mcp", mustChangePassword)
+                .claim("ver", credentialVersion)
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plusSeconds(accessTtlSeconds)))
                 .signWith(key)

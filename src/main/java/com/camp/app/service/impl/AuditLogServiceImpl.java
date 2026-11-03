@@ -24,7 +24,11 @@ public class AuditLogServiceImpl implements AuditLogService {
             row.setEventCode(eventCode(action));
             row.setActorUserId(actorId);
             row.setTargetType(targetType);
-            row.setTargetId(parseId(targetId));
+            Long parsedTarget = parseId(targetId);
+            row.setTargetId(parsedTarget);
+            if ("USER".equals(targetType)) {
+                row.setTargetUserId(parsedTarget != null ? parsedTarget : actorId);
+            }
             row.setResult(success ? 1 : 0);
             row.setSummary(action);
             row.setDetail(detail == null ? null : detail.substring(0, Math.min(detail.length(), 1000)));

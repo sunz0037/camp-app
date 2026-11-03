@@ -27,4 +27,13 @@ public class RefreshTokenStore {
     public void revoke(String jti) {
         tokens.computeIfPresent(jti, (key, token) -> new Token(token.userId(), token.expiresAt(), true));
     }
+
+    public void revokeUser(Long userId) {
+        if (userId == null) {
+            return;
+        }
+        tokens.replaceAll((jti, token) -> token.userId().equals(userId)
+                ? new Token(token.userId(), token.expiresAt(), true)
+                : token);
+    }
 }

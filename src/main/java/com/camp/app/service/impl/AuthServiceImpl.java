@@ -15,7 +15,11 @@ import com.camp.app.repository.UserRepository;
 import com.camp.app.security.AuthContext;
 import com.camp.app.security.AuthPrincipal;
 import com.camp.app.security.JwtService;
+import com.camp.app.security.LoginGuard;
+import com.camp.app.security.PasswordHistory;
+import com.camp.app.security.PasswordPolicy;
 import com.camp.app.security.RefreshTokenStore;
+import com.camp.app.security.SessionControl;
 import com.camp.app.security.Phase1Roles;
 import com.camp.app.service.AccessService;
 import com.camp.app.service.AuditLogService;
@@ -28,7 +32,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
-import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -44,8 +47,13 @@ public class AuthServiceImpl implements AuthService {
     private final RefreshTokenStore refreshTokenStore;
     private final AccessService accessService;
     private final AuditLogService auditLogService;
+    private final PasswordPolicy passwordPolicy;
+    private final PasswordHistory passwordHistory;
+    private final LoginGuard loginGuard;
+    private final SessionControl sessionControl;
 
     private static final String DEFAULT_PASSWORD_PLACEHOLDER = "DEFAULT_PASSWORD_NOT_SET";
+    private static final String FORCE_PREFIX = "FORCE$";
 
     @Override
     @Transactional
@@ -59,29 +67,42 @@ public class AuthServiceImpl implements AuthService {
         }
         User user = resolveUser(request, account);
         if (user == null) {
-            auditLogService.record("LOGIN_FAIL", null, "USER", account, "账号不存在", false);
+            auditLogService.record("LOGIN_FAIL", null, "USER", null, "账号不存在", false);
             throw BizException.unauthorized("账号或密码错误");
         }
         if (user.getStatus() == null || user.getStatus() == 0) {
-            auditLogService.record("LOGIN_FAIL", user.getId(), "USER", account, "用户已禁用", false);
+            auditLoginFail(user, "用户已禁用");
             throw BizException.unauthorized("用户已被禁用，请联系管理员");
         }
-        boolean placeholder = isDefaultPassword(user.getPassword());
-        boolean mustChange = placeholder;
-        if (placeholder) {
-            if (!StringUtils.hasText(request.getRealName()) || !user.getRealName().equals(request.getRealName().trim())) {
-                if (!StringUtils.hasText(request.getPassword()) || !safeMatch(request.getPassword(), user.getPassword())) {
-                    auditLogService.record("LOGIN_FAIL", user.getId(), "USER", account, "首次登录验证失败", false);
-                    throw BizException.unauthorized("首次登录需要提供匹配的姓名，或由管理员重置密码后再登录");
-                }
+        rejectIfLocked(user);
+        if (isUnsetPassword(user.getPassword())) {
+            boolean nameOk = StringUtils.hasText(request.getRealName())
+                    && user.getRealName().equals(request.getRealName().trim());
+            boolean passwordOk = safeMatch(request.getPassword(), user.getPassword());
+            if (!nameOk && !passwordOk) {
+                auditLoginFail(user, "首次登录验证失败");
+                failLogin(user);
+                throw BizException.unauthorized("首次登录需要提供匹配的姓名，或由管理员重置密码后再登录");
             }
+            loginGuard.unlock(user.getId());
             return issue(user, true, "请先设置密码");
         }
-        if (!StringUtils.hasText(request.getPassword()) || !safeMatch(request.getPassword(), user.getPassword())) {
-            auditLogService.record("LOGIN_FAIL", user.getId(), "USER", account, "密码错误", false);
+        if (isForcedChange(user.getPassword())) {
+            if (!safeMatch(request.getPassword(), user.getPassword())) {
+                auditLoginFail(user, "临时密码错误");
+                failLogin(user);
+                throw BizException.unauthorized("账号或密码错误");
+            }
+            loginGuard.unlock(user.getId());
+            return issue(user, true, "请先修改临时密码");
+        }
+        if (!safeMatch(request.getPassword(), user.getPassword())) {
+            auditLoginFail(user, "密码错误");
+            failLogin(user);
             throw BizException.unauthorized("账号或密码错误");
         }
-        return issue(user, mustChange, mustChange ? "请先修改初始密码" : null);
+        loginGuard.unlock(user.getId());
+        return issue(user, false, null);
     }
 
     @Override
@@ -92,14 +113,11 @@ public class AuthServiceImpl implements AuthService {
             User user = userRepository.findById(currentUserId)
                     .orElseThrow(() -> BizException.notFound("用户不存在"));
             String newPassword = firstText(request.getNewPassword(), request.getPassword());
-            if (!StringUtils.hasText(newPassword) || newPassword.length() < 6) {
-                throw BizException.badRequest("密码长度不能少于6位");
-            }
-            user.setPassword(PasswordEncoderUtil.encode(newPassword));
             if (StringUtils.hasText(request.getPhone())) {
                 user.setPhone(request.getPhone().trim());
             }
-            userRepository.save(user);
+            assertPasswordAcceptable(user, newPassword);
+            storePassword(user, newPassword, "首次设置密码");
             return issue(user, false, "已完成首次改密");
         }
         if (request.getIdentityType() != null && request.getIdentityType() != 1 && request.getIdentityType() != 2) {
@@ -124,14 +142,11 @@ public class AuthServiceImpl implements AuthService {
             throw BizException.badRequest("姓名不匹配");
         }
         String newPassword = firstText(request.getNewPassword(), request.getPassword());
-        if (!StringUtils.hasText(newPassword) || newPassword.length() < 6) {
-            throw BizException.badRequest("密码长度不能少于6位");
-        }
-        user.setPassword(PasswordEncoderUtil.encode(newPassword));
         if (StringUtils.hasText(request.getPhone())) {
             user.setPhone(request.getPhone().trim());
         }
-        userRepository.save(user);
+        assertPasswordAcceptable(user, newPassword);
+        storePassword(user, newPassword, "首次设置密码");
         return issue(user, false, "激活成功，已设置密码");
     }
 
@@ -158,7 +173,7 @@ public class AuthServiceImpl implements AuthService {
         refreshTokenStore.revoke(claims.getId());
         User user = userRepository.findById(stored.userId())
                 .orElseThrow(() -> BizException.unauthorized("用户不存在"));
-        return issue(user, isDefaultPassword(user.getPassword()), null);
+        return issue(user, mustChangePassword(user), null);
     }
 
     @Override
@@ -177,29 +192,28 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     @Transactional
-    public void changePassword(Long userId, String oldPassword, String newPassword) {
+    public LoginResponse changePassword(Long userId, String oldPassword, String newPassword) {
         ChangePasswordRequest request = new ChangePasswordRequest();
         request.setOldPassword(oldPassword);
         request.setNewPassword(newPassword);
-        changePassword(userId, request);
+        return changePassword(userId, request);
     }
 
     @Override
     @Transactional
-    public void changePassword(Long userId, ChangePasswordRequest request) {
+    public LoginResponse changePassword(Long userId, ChangePasswordRequest request) {
         if (userId == null) {
             throw BizException.unauthorized("未登录");
         }
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> BizException.notFound("用户不存在"));
-        if (!safeMatch(request.getOldPassword(), user.getPassword())) {
+        if (request == null || !safeMatch(request.getOldPassword(), user.getPassword())) {
+            auditPassword(user, "旧密码错误", false);
             throw BizException.badRequest("旧密码错误");
         }
-        if (request.getNewPassword() == null || request.getNewPassword().length() < 6) {
-            throw BizException.badRequest("新密码长度不能少于6位");
-        }
-        user.setPassword(PasswordEncoderUtil.encode(request.getNewPassword()));
-        userRepository.save(user);
+        assertPasswordAcceptable(user, request.getNewPassword());
+        storePassword(user, request.getNewPassword(), "用户修改密码");
+        return issue(user, false, "密码已更新");
     }
 
     @Override
@@ -233,38 +247,44 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public String adminResetPassword(Long operatorId, AdminResetPasswordRequest request) {
-        AuthPrincipal principal = AuthContext.get();
-        if (principal == null || (!principal.roles().contains(Phase1Roles.ADMIN) && !principal.roles().contains(Phase1Roles.ACADEMIC))) {
-            throw BizException.forbidden("仅管理员或教务可重置密码");
-        }
-        if (request.getUserId() == null) {
+        if (request == null || request.getUserId() == null) {
             throw BizException.badRequest("userId 不能为空");
         }
         User target = userRepository.findById(request.getUserId())
                 .orElseThrow(() -> BizException.notFound("用户不存在"));
-        if (!principal.roles().contains(Phase1Roles.ADMIN)) {
-            List<String> targetRoles = accessService.rolesOf(target);
-            String highest = Phase1Roles.highest(targetRoles);
-            if (Phase1Roles.ADMIN.equals(highest) || Phase1Roles.ACADEMIC.equals(highest)) {
-                throw BizException.forbidden("教务不能重置管理员或教务账号");
-            }
-        }
+        assertCanManage(target);
         String temp = StringUtils.hasText(request.getTemporaryPassword())
                 ? request.getTemporaryPassword().trim()
-                : randomPassword();
-        if (temp.length() < 6) {
-            throw BizException.badRequest("临时口令至少 6 位");
-        }
-        target.setPassword(PasswordEncoderUtil.encode(temp));
+                : passwordPolicy.generate();
+        assertPasswordAcceptable(target, temp);
+        String previous = target.getPassword();
+        target.setPassword(FORCE_PREFIX + PasswordEncoderUtil.encode(temp));
         userRepository.save(target);
-        auditLogService.record("ADMIN_RESET_PASSWORD", operatorId, "USER", String.valueOf(target.getId()), "重置为临时口令并强制改密", true);
+        rememberPrevious(target.getId(), previous);
+        invalidateSessions(target.getId());
+        Long actor = operatorId != null ? operatorId : target.getId();
+        auditLogService.record("PASSWORD_RESET", actor, "USER", String.valueOf(target.getId()), "管理员重置为临时口令并强制改密", true);
         return temp;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public void adminUnlock(Long operatorId, Long userId) {
+        if (userId == null) {
+            throw BizException.badRequest("userId 不能为空");
+        }
+        User target = userRepository.findById(userId)
+                .orElseThrow(() -> BizException.notFound("用户不存在"));
+        assertCanManage(target);
+        loginGuard.unlock(target.getId());
+        log.info("已解除登录锁定 operator={} target={}", operatorId, userId);
     }
 
     private LoginResponse issue(User user, boolean firstLogin, String message) {
         List<String> roles = accessService.rolesOf(user);
         List<String> permissions = accessService.permissionsOf(user);
-        String access = jwtService.createAccessToken(user.getId(), roles, permissions, firstLogin);
+        String access = jwtService.createAccessToken(
+                user.getId(), roles, permissions, firstLogin, sessionControl.current(user.getId()));
         String jti = jwtService.newJti();
         String refresh = jwtService.createRefreshToken(user.getId(), jti);
         refreshTokenStore.save(jti, user.getId(), LocalDateTime.now().plusSeconds(jwtService.getRefreshTtlSeconds()));
@@ -318,7 +338,18 @@ public class AuthServiceImpl implements AuthService {
         return userRepository.findById(studentOpt.get().getUserId()).orElse(null);
     }
 
-    private boolean isDefaultPassword(String password) {
+    private boolean mustChangePassword(User user) {
+        return isUnsetPassword(user.getPassword()) || isForcedChange(user.getPassword());
+    }
+
+    private boolean isForcedChange(String password) {
+        return password != null && password.startsWith(FORCE_PREFIX);
+    }
+
+    private boolean isUnsetPassword(String password) {
+        if (isForcedChange(password)) {
+            return false;
+        }
         if (password == null || password.isEmpty() || password.equals(DEFAULT_PASSWORD_PLACEHOLDER) || password.contains("placeholder")) {
             return true;
         }
@@ -328,9 +359,83 @@ public class AuthServiceImpl implements AuthService {
 
     private boolean safeMatch(String raw, String encoded) {
         try {
-            return PasswordEncoderUtil.matches(raw, encoded);
+            return PasswordEncoderUtil.matches(raw, encodedForMatch(encoded));
         } catch (Exception ex) {
             return false;
+        }
+    }
+
+    private String encodedForMatch(String encoded) {
+        if (isForcedChange(encoded)) {
+            return encoded.substring(FORCE_PREFIX.length());
+        }
+        return encoded;
+    }
+
+    private void rejectIfLocked(User user) {
+        try {
+            loginGuard.ensureAllowed(user.getId());
+        } catch (BizException ex) {
+            auditLoginFail(user, "账号锁定");
+            throw ex;
+        }
+    }
+
+    private void failLogin(User user) {
+        loginGuard.onFailure(user.getId());
+    }
+
+    private void auditLoginFail(User user, String detail) {
+        String target = user.getId() == null ? null : String.valueOf(user.getId());
+        auditLogService.record("LOGIN_FAIL", user.getId(), "USER", target, detail, false);
+    }
+
+    private void auditPassword(User user, String detail, boolean success) {
+        auditLogService.record("PASSWORD_RESET", user.getId(), "USER", String.valueOf(user.getId()), detail, success);
+    }
+
+    private void assertPasswordAcceptable(User user, String raw) {
+        try {
+            passwordPolicy.check(raw, user.getUsername(), encodedForMatch(user.getPassword()), passwordHistory.olderHashes(user.getId()));
+        } catch (BizException ex) {
+            auditPassword(user, ex.getMessage(), false);
+            throw ex;
+        }
+    }
+
+    private void storePassword(User user, String raw, String auditDetail) {
+        String previous = user.getPassword();
+        user.setPassword(PasswordEncoderUtil.encode(raw));
+        userRepository.save(user);
+        rememberPrevious(user.getId(), previous);
+        invalidateSessions(user.getId());
+        auditPassword(user, auditDetail, true);
+    }
+
+    private void rememberPrevious(Long userId, String previous) {
+        if (previous == null || isUnsetPassword(previous)) {
+            return;
+        }
+        passwordHistory.remember(userId, encodedForMatch(previous));
+    }
+
+    private void invalidateSessions(Long userId) {
+        sessionControl.bump(userId);
+        refreshTokenStore.revokeUser(userId);
+        loginGuard.unlock(userId);
+    }
+
+    private void assertCanManage(User target) {
+        AuthPrincipal principal = AuthContext.get();
+        if (principal == null || (!principal.roles().contains(Phase1Roles.ADMIN) && !principal.roles().contains(Phase1Roles.ACADEMIC))) {
+            throw BizException.forbidden("仅管理员或教务可重置密码");
+        }
+        if (!principal.roles().contains(Phase1Roles.ADMIN)) {
+            List<String> targetRoles = accessService.rolesOf(target);
+            String highest = Phase1Roles.highest(targetRoles);
+            if (Phase1Roles.ADMIN.equals(highest) || Phase1Roles.ACADEMIC.equals(highest)) {
+                throw BizException.forbidden("教务不能重置管理员或教务账号");
+            }
         }
     }
 
@@ -344,13 +449,4 @@ public class AuthServiceImpl implements AuthService {
         return null;
     }
 
-    private String randomPassword() {
-        final String alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
-        SecureRandom random = new SecureRandom();
-        StringBuilder builder = new StringBuilder();
-        for (int i = 0; i < 8; i++) {
-            builder.append(alphabet.charAt(random.nextInt(alphabet.length())));
-        }
-        return builder.toString();
-    }
 }

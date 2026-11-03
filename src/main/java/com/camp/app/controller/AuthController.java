@@ -3,6 +3,7 @@ package com.camp.app.controller;
 import com.camp.app.api.BaseResponse;
 import com.camp.app.model.ActivateUserRequest;
 import com.camp.app.model.AdminResetPasswordRequest;
+import com.camp.app.model.AdminUnlockRequest;
 import com.camp.app.model.ChangePasswordRequest;
 import com.camp.app.model.LoginRequest;
 import com.camp.app.model.LoginResponse;
@@ -64,17 +65,15 @@ public class AuthController {
     }
 
     @PutMapping("/password")
-    public BaseResponse<Void> changePassword(@RequestBody(required = false) ChangePasswordRequest body,
-                                             @RequestParam(required = false) Long userId,
-                                             @RequestParam(required = false) String oldPassword,
-                                             @RequestParam(required = false) String newPassword) {
+    public BaseResponse<LoginResponse> changePassword(@RequestBody(required = false) ChangePasswordRequest body,
+                                                      @RequestParam(required = false) Long userId,
+                                                      @RequestParam(required = false) String oldPassword,
+                                                      @RequestParam(required = false) String newPassword) {
         Long id = AuthContext.userId() != null ? AuthContext.userId() : userId;
-        if (body != null && body.getNewPassword() != null) {
-            authService.changePassword(id, body);
-        } else {
-            authService.changePassword(id, oldPassword, newPassword);
-        }
-        return BaseResponse.ok(null);
+        LoginResponse session = body != null && body.getNewPassword() != null
+                ? authService.changePassword(id, body)
+                : authService.changePassword(id, oldPassword, newPassword);
+        return BaseResponse.ok(session);
     }
 
     @PostMapping("/activate")
@@ -86,5 +85,12 @@ public class AuthController {
     public BaseResponse<Map<String, String>> adminReset(@RequestBody AdminResetPasswordRequest request) {
         String temporary = authService.adminResetPassword(AuthContext.userId(), request);
         return BaseResponse.ok(Map.of("temporaryPassword", temporary, "mustChangePassword", "true"));
+    }
+
+    @PostMapping("/admin-unlock")
+    public BaseResponse<Void> adminUnlock(@RequestBody AdminUnlockRequest request) {
+        Long userId = request == null ? null : request.getUserId();
+        authService.adminUnlock(AuthContext.userId(), userId);
+        return BaseResponse.ok(null);
     }
 }
