@@ -102,6 +102,9 @@ public class UserServiceImpl implements UserService {
         if (userVo.getStatus() == null) {
             user.setStatus(1); // 默认启用
         }
+        if (!StringUtils.hasText(userVo.getPassword())) {
+            user.setMustChangePassword(true);
+        }
         
         userRepository.save(user);
     }

@@ -6,5 +6,7 @@ import java.util.List;
 
 public interface PermissionService {
     List<PermissionVo> listAll();
+
+    List<PermissionVo> tree();
 }
 

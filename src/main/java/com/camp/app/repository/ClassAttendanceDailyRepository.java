@@ -16,6 +16,8 @@ public interface ClassAttendanceDailyRepository extends JpaRepository<ClassAtten
     Optional<ClassAttendanceDaily> findByAttendanceDateAndGradeAndClassName(
             LocalDate attendanceDate, String grade, String className);
 
+    Optional<ClassAttendanceDaily> findByClassIdAndAttendanceDate(Long classId, LocalDate attendanceDate);
+
     @Query("SELECT c FROM ClassAttendanceDaily c WHERE " +
            "(:grade IS NULL OR c.grade = :grade) AND " +
            "(:className IS NULL OR c.className = :className) AND " +

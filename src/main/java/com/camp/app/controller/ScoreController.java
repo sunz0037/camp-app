@@ -5,11 +5,13 @@ import com.camp.app.api.PageResult;
 import com.camp.app.model.ExamScoreVo;
 import com.camp.app.service.ExamScoreService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.web.bind.annotation.*;
 
 @RequiredArgsConstructor
 @RestController
-@RequestMapping("/api/scores")
+@ConditionalOnProperty(name = "camp.phase2.enabled", havingValue = "true")
+@RequestMapping("/api/v1/scores")
 public class ScoreController {
 
     private final ExamScoreService examScoreService;

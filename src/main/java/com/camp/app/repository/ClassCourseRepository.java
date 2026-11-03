@@ -29,6 +29,8 @@ public interface ClassCourseRepository extends JpaRepository<ClassCourse, Long> 
      * 根据科目ID查询所有关联的班级
      */
     List<ClassCourse> findByCourseId(Long courseId);
+
+    List<ClassCourse> findByTeacher_Id(Long teacherId);
     
     /**
      * 根据班级ID和科目ID查询关联（用于检查是否已存在）

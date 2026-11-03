@@ -1,18 +1,25 @@
 package com.camp.app.service.impl;
 
+import com.camp.app.api.BizException;
 import com.camp.app.api.PageResult;
 import com.camp.app.entity.Student;
 import com.camp.app.entity.Class;
 import com.camp.app.entity.User;
 import com.camp.app.entity.Grade;
+import com.camp.app.model.DataScope;
+import com.camp.app.model.ImportResultVo;
 import com.camp.app.model.StudentVo;
 import com.camp.app.model.UserVo;
 import com.camp.app.repository.StudentRepository;
 import com.camp.app.repository.ClassRepository;
 import com.camp.app.repository.GradeRepository;
+import com.camp.app.security.AuthContext;
+import com.camp.app.service.AccessService;
+import com.camp.app.service.AuditLogService;
 import com.camp.app.service.StudentService;
 import com.camp.app.service.UserService;
 import com.camp.app.util.BeanMapper;
+import com.camp.app.util.Masking;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -36,6 +43,8 @@ public class StudentServiceImpl implements StudentService {
     private final GradeRepository gradeRepository;
     private final com.camp.app.repository.UserRepository userRepository;
     private final UserService userService;
+    private final AccessService accessService;
+    private final AuditLogService auditLogService;
 
     @Override
     public PageResult<StudentVo> list(long page, long size, String grade, String className, String major, String keyword) {
@@ -76,6 +85,21 @@ public class StudentServiceImpl implements StudentService {
                     cb.like(root.get("className"), pattern)
                 ));
             }
+            predicates.add(cb.or(cb.isNull(root.get("isDeleted")), cb.isFalse(root.get("isDeleted"))));
+            DataScope scope = accessService.current();
+            if (!scope.isAll()) {
+                if ("SELF".equals(scope.getLevel())) {
+                    if (scope.getStudentId() == null) {
+                        predicates.add(cb.disjunction());
+                    } else {
+                        predicates.add(cb.equal(root.get("id"), scope.getStudentId()));
+                    }
+                } else if (scope.getClassIds() == null || scope.getClassIds().isEmpty()) {
+                    predicates.add(cb.disjunction());
+                } else {
+                    predicates.add(root.get("classId").in(scope.getClassIds()));
+                }
+            }
             
             return cb.and(predicates.toArray(new Predicate[0]));
         };
@@ -95,9 +119,13 @@ public class StudentServiceImpl implements StudentService {
 
     @Override
     public StudentVo get(Long id) {
-        return studentRepository.findById(id)
-                .map(this::toVo)
-                .orElse(null);
+        Student student = studentRepository.findById(id)
+                .orElseThrow(() -> BizException.notFound("学生不存在"));
+        if (Boolean.TRUE.equals(student.getIsDeleted())) {
+            throw BizException.notFound("学生不存在");
+        }
+        accessService.assertStudentVisible(id);
+        return toVo(student, false);
     }
 
     @Override
@@ -191,6 +219,7 @@ public class StudentServiceImpl implements StudentService {
         if (classEntity.getGrade() != null) {
             student.setGradeEntity(classEntity.getGrade());
         }
+        accessService.assertClassInScope(classEntity);
         
         studentRepository.save(student);
         
@@ -203,6 +232,8 @@ public class StudentServiceImpl implements StudentService {
     public void update(Long id, StudentVo vo) {
         Student student = studentRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("学生不存在: " + id));
+        Integer previousStatus = student.getStatus();
+        accessService.assertStudentVisible(id);
         
         // 处理班级更新：优先使用 classId，如果没有则通过 grade 和 className 查找
         Class newClass = null;
@@ -261,6 +292,10 @@ public class StudentServiceImpl implements StudentService {
         BeanMapper.copyProperties(vo, student);
         student.setId(id);
         studentRepository.save(student);
+        if (vo.getStatus() != null && !vo.getStatus().equals(previousStatus)) {
+            auditLogService.record("STUDENT_STATUS", AuthContext.userId(), "STUDENT", String.valueOf(id),
+                    "status " + previousStatus + " -> " + vo.getStatus(), true);
+        }
     }
 
     @Override
@@ -269,8 +304,10 @@ public class StudentServiceImpl implements StudentService {
         Student student = studentRepository.findById(id)
             .orElseThrow(() -> new RuntimeException("学生不存在: " + id));
         
+        accessService.assertStudentVisible(id);
         Long classId = student.getClassId();
-        studentRepository.deleteById(id);
+        student.setIsDeleted(true);
+        studentRepository.save(student);
         
         // 更新班级学生数
         if (classId != null) {
@@ -282,6 +319,10 @@ public class StudentServiceImpl implements StudentService {
      * 转换为VO
      */
     private StudentVo toVo(Student student) {
+        return toVo(student, true);
+    }
+
+    private StudentVo toVo(Student student, boolean mask) {
         StudentVo vo = new StudentVo();
         BeanMapper.copyProperties(student, vo);
         
@@ -299,10 +340,86 @@ public class StudentServiceImpl implements StudentService {
             userRepository.findById(student.getUserId()).ifPresent(user -> {
                 vo.setRealName(user.getRealName());
                 vo.setUsername(user.getUsername());
+                vo.setPhone(mask ? Masking.phone(user.getPhone()) : user.getPhone());
+                vo.setIdCard(mask ? Masking.idCard(user.getIdCard()) : user.getIdCard());
             });
         }
         
         return vo;
+    }
+
+    @Override
+    public String importTemplate() {
+        return "studentNo,realName,classId,gender,phone\n";
+    }
+
+    @Override
+    @Transactional
+    public ImportResultVo batchImport(String csv) {
+        if (csv == null || csv.isBlank()) {
+            throw BizException.badRequest("导入内容为空");
+        }
+        String[] lines = csv.replace("\r", "").split("\n");
+        int success = 0;
+        List<ImportResultVo.RowError> errors = new ArrayList<>();
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i].trim();
+            if (line.isEmpty() || line.toLowerCase().startsWith("studentno")) {
+                continue;
+            }
+            String[] cols = line.split(",", -1);
+            if (cols.length < 3) {
+                errors.add(ImportResultVo.RowError.builder().row(i + 1).message("列不足，至少需要学号、姓名、班级ID").build());
+                continue;
+            }
+            try {
+                StudentVo vo = new StudentVo();
+                vo.setStudentNo(cols[0].trim());
+                vo.setRealName(cols[1].trim());
+                vo.setClassId(Long.valueOf(cols[2].trim()));
+                if (cols.length > 3 && !cols[3].isBlank()) {
+                    vo.setGender(Integer.valueOf(cols[3].trim()));
+                }
+                if (cols.length > 4 && !cols[4].isBlank()) {
+                    vo.setPhone(cols[4].trim());
+                }
+                create(vo);
+                if (vo.getPhone() != null) {
+                    studentRepository.findByStudentNo(vo.getStudentNo()).ifPresent(saved ->
+                            userRepository.findById(saved.getUserId()).ifPresent(user -> {
+                                user.setPhone(vo.getPhone());
+                                userRepository.save(user);
+                            }));
+                }
+                success++;
+            } catch (Exception ex) {
+                errors.add(ImportResultVo.RowError.builder().row(i + 1).message(ex.getMessage()).build());
+            }
+        }
+        auditLogService.record("STUDENT_IMPORT", AuthContext.userId(), "STUDENT", null,
+                "success=" + success + ", fail=" + errors.size(), true);
+        return ImportResultVo.builder().successCount(success).failCount(errors.size()).errors(errors).build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public String exportCsv() {
+        StringBuilder builder = new StringBuilder("studentNo,realName,classId,className,phone,idCard,status\n");
+        list(1, 100, null, null, null, null).getRecords().forEach(vo -> builder
+                .append(nullToEmpty(vo.getStudentNo())).append(',')
+                .append(nullToEmpty(vo.getRealName())).append(',')
+                .append(vo.getClassId() == null ? "" : vo.getClassId()).append(',')
+                .append(nullToEmpty(vo.getClassName())).append(',')
+                .append(nullToEmpty(vo.getPhone())).append(',')
+                .append(nullToEmpty(vo.getIdCard())).append(',')
+                .append(vo.getStatus() == null ? "" : vo.getStatus())
+                .append('\n'));
+        auditLogService.record("STUDENT_EXPORT", AuthContext.userId(), "STUDENT", null, "export", true);
+        return builder.toString();
+    }
+
+    private String nullToEmpty(String value) {
+        return value == null ? "" : value.replace(",", " ");
     }
     
     /**

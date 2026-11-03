@@ -32,7 +32,7 @@ public interface StudentRepository extends JpaRepository<Student, Long>, JpaSpec
     /**
      * 统计班级学生数（仅统计在读学生）
      */
-    @Query("SELECT COUNT(s) FROM Student s WHERE s.classId = :classId AND s.status = 1")
+    @Query("SELECT COUNT(s) FROM Student s WHERE s.classId = :classId AND s.status = 1 AND (s.isDeleted = false OR s.isDeleted IS NULL)")
     Long countByClassId(@Param("classId") Long classId);
 }
 

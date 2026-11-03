@@ -1,20 +1,34 @@
 package com.camp.app.service.impl;
 
+import com.camp.app.api.BizException;
+import com.camp.app.api.PageResult;
 import com.camp.app.entity.ClassCourse;
+import com.camp.app.entity.ClassCourseSession;
 import com.camp.app.entity.Course;
+import com.camp.app.entity.Student;
 import com.camp.app.entity.User;
 import com.camp.app.entity.Class;
 import com.camp.app.model.ClassCourseVo;
+import com.camp.app.model.DataScope;
+import com.camp.app.model.SessionSlot;
+import com.camp.app.model.TimetableItemVo;
 import com.camp.app.repository.ClassCourseRepository;
+import com.camp.app.repository.ClassCourseSessionRepository;
 import com.camp.app.repository.ClassRepository;
 import com.camp.app.repository.CourseRepository;
+import com.camp.app.repository.StudentRepository;
 import com.camp.app.repository.UserRepository;
+import com.camp.app.security.AuthContext;
+import com.camp.app.security.AuthPrincipal;
+import com.camp.app.security.Phase1Roles;
+import com.camp.app.service.AccessService;
 import com.camp.app.service.ClassCourseService;
 import com.camp.app.util.BeanMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -29,6 +43,9 @@ public class ClassCourseServiceImpl implements ClassCourseService {
     private final ClassRepository classRepository;
     private final CourseRepository courseRepository;
     private final UserRepository userRepository;
+    private final ClassCourseSessionRepository classCourseSessionRepository;
+    private final StudentRepository studentRepository;
+    private final AccessService accessService;
     
     @Override
     public List<ClassCourseVo> listByClassId(Long classId) {
@@ -101,6 +118,7 @@ public class ClassCourseServiceImpl implements ClassCourseService {
         }
         
         classCourseRepository.save(classCourse);
+        replaceSessions(classCourse.getId(), classCourseVo.getSessions());
     }
     
     @Override
@@ -181,6 +199,9 @@ public class ClassCourseServiceImpl implements ClassCourseService {
         }
         
         classCourseRepository.save(classCourse);
+        if (classCourseVo.getSessions() != null) {
+            replaceSessions(classCourse.getId(), classCourseVo.getSessions());
+        }
     }
     
     @Override
@@ -188,6 +209,7 @@ public class ClassCourseServiceImpl implements ClassCourseService {
     public void delete(Long id) {
         ClassCourse classCourse = classCourseRepository.findById(id)
             .orElseThrow(() -> new RuntimeException("班级授课科目关联不存在"));
+        classCourseSessionRepository.deleteByClassCourseId(id);
         classCourseRepository.delete(classCourse);
     }
     
@@ -228,8 +250,114 @@ public class ClassCourseServiceImpl implements ClassCourseService {
             vo.setTeacherId(classCourse.getTeacher().getId());
             vo.setTeacherName(classCourse.getTeacher().getRealName());
         }
-        
+        vo.setSessions(classCourseSessionRepository.findByClassCourseId(classCourse.getId()).stream().map(session -> {
+            SessionSlot slot = new SessionSlot();
+            slot.setWeekday(session.getWeekday());
+            slot.setPeriodStart(session.getPeriodStart());
+            slot.setPeriodEnd(session.getPeriodEnd());
+            slot.setRoomNo(session.getRoomNo());
+            return slot;
+        }).collect(Collectors.toList()));
         return vo;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PageResult<ClassCourseVo> list(long page, long size, Long classId) {
+        List<ClassCourseVo> all = (classId == null ? classCourseRepository.findAll() : classCourseRepository.findByClassEntityId(classId))
+                .stream().map(this::toVo).collect(Collectors.toList());
+        int from = (int) Math.min((page - 1) * size, all.size());
+        int to = (int) Math.min(from + size, all.size());
+        return PageResult.<ClassCourseVo>builder().page(page).size(size).total(all.size()).records(all.subList(from, to)).build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<TimetableItemVo> myTimetable(Long userId) {
+        AuthPrincipal principal = AuthContext.get();
+        boolean dev = principal != null && principal.devAuth();
+        if (userId == null && !dev) {
+            throw BizException.unauthorized("未登录");
+        }
+        DataScope scope = accessService.current();
+        String highest = dev
+                ? Phase1Roles.highest(principal.roles())
+                : Phase1Roles.highest(accessService.rolesOf(
+                userRepository.findById(userId).orElseThrow(() -> BizException.notFound("用户不存在"))));
+        List<ClassCourse> courses;
+        if (Phase1Roles.STUDENT.equals(highest)) {
+            Long classId = scope.getClassIds() == null || scope.getClassIds().isEmpty() ? null : scope.getClassIds().get(0);
+            if (!dev) {
+                Student student = studentRepository.findByUserId(userId).orElseThrow(() -> BizException.notFound("未绑定学籍"));
+                classId = student.getClassId();
+            }
+            courses = classId == null ? List.of() : classCourseRepository.findByClassEntityId(classId);
+        } else if (Phase1Roles.TEACHER.equals(highest)) {
+            if (dev && scope.getClassIds() != null && !scope.getClassIds().isEmpty()) {
+                courses = new ArrayList<>();
+                for (Long id : scope.getClassIds()) {
+                    courses.addAll(classCourseRepository.findByClassEntityId(id));
+                }
+            } else if (userId != null) {
+                courses = classCourseRepository.findByTeacher_Id(userId);
+            } else {
+                courses = List.of();
+            }
+        } else if (scope.isAll()) {
+            courses = classCourseRepository.findAll();
+        } else {
+            courses = new ArrayList<>();
+            for (Long id : scope.getClassIds()) {
+                courses.addAll(classCourseRepository.findByClassEntityId(id));
+            }
+        }
+        List<TimetableItemVo> items = new ArrayList<>();
+        for (ClassCourse course : courses) {
+            ClassCourseVo vo = toVo(course);
+            if (vo.getSessions() == null) {
+                continue;
+            }
+            for (SessionSlot slot : vo.getSessions()) {
+                items.add(TimetableItemVo.builder()
+                        .classCourseId(vo.getId())
+                        .classId(vo.getClassId())
+                        .className(vo.getClassName())
+                        .courseId(vo.getCourseId())
+                        .courseName(vo.getCourseName())
+                        .teacherId(vo.getTeacherId())
+                        .teacherName(vo.getTeacherName())
+                        .academicYear(vo.getAcademicYear())
+                        .semester(vo.getSemester())
+                        .weekday(slot.getWeekday())
+                        .periodStart(slot.getPeriodStart())
+                        .periodEnd(slot.getPeriodEnd())
+                        .roomNo(slot.getRoomNo())
+                        .build());
+            }
+        }
+        return items;
+    }
+
+    private void replaceSessions(Long classCourseId, List<SessionSlot> sessions) {
+        classCourseSessionRepository.deleteByClassCourseId(classCourseId);
+        if (sessions == null) {
+            return;
+        }
+        for (SessionSlot slot : sessions) {
+            if (slot.getWeekday() == null || slot.getWeekday() < 1 || slot.getWeekday() > 7) {
+                throw BizException.unprocessable("weekday 必须是 1-7");
+            }
+            if (slot.getPeriodStart() == null || slot.getPeriodEnd() == null || slot.getPeriodStart() < 1 || slot.getPeriodEnd() < slot.getPeriodStart()) {
+                throw BizException.unprocessable("periodStart/periodEnd 不合法");
+            }
+            ClassCourseSession session = new ClassCourseSession();
+            session.setClassCourseId(classCourseId);
+            session.setWeekday(slot.getWeekday());
+            session.setPeriodStart(slot.getPeriodStart());
+            session.setPeriodEnd(slot.getPeriodEnd());
+            session.setRoomNo(slot.getRoomNo());
+            classCourseSessionRepository.save(session);
+        }
     }
     
     /**

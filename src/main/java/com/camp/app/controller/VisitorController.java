@@ -5,11 +5,13 @@ import com.camp.app.api.PageResult;
 import com.camp.app.model.VisitorRegistrationVo;
 import com.camp.app.service.VisitorService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.web.bind.annotation.*;
 
 @RequiredArgsConstructor
 @RestController
-@RequestMapping("/api/visitors")
+@ConditionalOnProperty(name = "camp.phase2.enabled", havingValue = "true")
+@RequestMapping("/api/v1/visitors")
 public class VisitorController {
 
     private final VisitorService visitorService;

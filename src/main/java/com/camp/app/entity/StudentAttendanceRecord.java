@@ -18,6 +18,22 @@ public class StudentAttendanceRecord {
     @Column(name = "student_id", nullable = false)
     private Long studentId;
 
+    @Column(name = "class_id")
+    private Long classId;
+
+    @Column(name = "summary_id")
+    private Long summaryId;
+
+    /** 某节课异常时可填，汇总不使用该字段。 */
+    @Column(name = "course_id")
+    private Long courseId;
+
+    @Column(name = "exception_type", length = 30)
+    private String exceptionType;
+
+    @Column(name = "confirm_status", length = 20)
+    private String confirmStatus;
+
     @Column(nullable = false)
     private LocalDate attendanceDate;
 

@@ -6,6 +6,7 @@ import com.camp.app.model.ExamScheduleVo;
 import com.camp.app.service.ExamScheduleService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.web.bind.annotation.*;
 
 /**
@@ -13,7 +14,8 @@ import org.springframework.web.bind.annotation.*;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/exam-schedules")
+@ConditionalOnProperty(name = "camp.phase2.enabled", havingValue = "true")
+@RequestMapping("/api/v1/exam-schedules")
 @RequiredArgsConstructor
 public class ExamScheduleController {
     

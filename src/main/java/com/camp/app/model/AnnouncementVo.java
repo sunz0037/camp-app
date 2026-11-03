@@ -3,6 +3,7 @@ package com.camp.app.model;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 public class AnnouncementVo {
@@ -16,6 +17,10 @@ public class AnnouncementVo {
     private Integer isTop;
     private Integer isUrgent;
     private String targetAudience;
+    /** ALL | GRADE | CLASS */
+    private String scopeType;
+    private List<Long> scopeIds;
+    private Boolean isRead;
     private Integer viewCount;
     /**
      * 0-草稿，1-已发布，2-已撤回

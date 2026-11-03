@@ -1,6 +1,9 @@
 package com.camp.app.service;
 
+import com.camp.app.api.PageResult;
 import com.camp.app.model.ClassCourseVo;
+import com.camp.app.model.TimetableItemVo;
+
 import java.util.List;
 
 /**
@@ -47,5 +50,9 @@ public interface ClassCourseService {
      * 批量删除班级授课科目
      */
     void batchDelete(List<Long> ids);
+
+    PageResult<ClassCourseVo> list(long page, long size, Long classId);
+
+    List<TimetableItemVo> myTimetable(Long userId);
 }
 

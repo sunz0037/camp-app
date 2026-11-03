@@ -24,6 +24,13 @@ public class ClassAttendanceDaily {
     @Column(nullable = false, length = 50)
     private String className;
 
+    /** 首期汇总按班级+日期，不挂 courseId。 */
+    @Column(name = "class_id")
+    private Long classId;
+
+    @Column(name = "early_leave_count")
+    private Integer earlyLeaveCount;
+
     @Column(nullable = false)
     private Integer expectedCount;
 

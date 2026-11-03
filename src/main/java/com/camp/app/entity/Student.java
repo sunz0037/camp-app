@@ -29,8 +29,8 @@ public class Student {
     @JoinColumn(name = "grade_id")
     private Grade gradeEntity; // 新增：年级实体关联
 
-    @Column(name = "grade_id")
-    private Long gradeId; // 新增：年级ID（方便查询）
+    @Column(name = "grade_id", insertable = false, updatable = false)
+    private Long gradeId; // 与 gradeEntity 共用列，只读，避免重复映射
 
     @Column(length = 50)
     private String className; // 冗余字段，通过触发器或应用层同步
@@ -39,8 +39,8 @@ public class Student {
     @JoinColumn(name = "class_id")
     private Class classEntity; // 新增：班级实体关联
 
-    @Column(name = "class_id")
-    private Long classId; // 新增：班级ID（方便查询）
+    @Column(name = "class_id", insertable = false, updatable = false)
+    private Long classId; // 与 classEntity 共用列，只读，避免重复映射
 
     @Column(length = 100)
     private String major;
@@ -69,6 +69,9 @@ public class Student {
 
     @Column(nullable = false)
     private Integer status = 1; // 0-休学，1-在读，2-毕业，3-退学
+
+    @Column(name = "is_deleted")
+    private Boolean isDeleted = false;
 
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;

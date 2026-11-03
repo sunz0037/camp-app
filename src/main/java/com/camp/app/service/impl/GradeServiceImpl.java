@@ -1,9 +1,14 @@
 package com.camp.app.service.impl;
 
+import com.camp.app.api.BizException;
 import com.camp.app.api.PageResult;
 import com.camp.app.entity.Grade;
+import com.camp.app.model.DataScope;
 import com.camp.app.model.GradeVo;
+import com.camp.app.model.OptionItem;
+import com.camp.app.repository.ClassRepository;
 import com.camp.app.repository.GradeRepository;
+import com.camp.app.service.AccessService;
 import com.camp.app.service.GradeService;
 import com.camp.app.util.BeanMapper;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +29,8 @@ import java.util.stream.Collectors;
 public class GradeServiceImpl implements GradeService {
     
     private final GradeRepository gradeRepository;
+    private final ClassRepository classRepository;
+    private final AccessService accessService;
     
     @Override
     public PageResult<GradeVo> list(long page, long size, String gradeType, Integer status, String keyword) {
@@ -107,10 +114,24 @@ public class GradeServiceImpl implements GradeService {
         Grade grade = gradeRepository.findById(id)
             .orElseThrow(() -> new RuntimeException("年级不存在"));
         
-        // TODO: 检查是否有班级关联，如果有则不允许删除
-        // 可以通过ClassRepository查询
-        
+        if (!classRepository.findByGradeId(id).isEmpty()) {
+            throw BizException.conflict("年级下仍有班级，无法删除");
+        }
+        DataScope scope = accessService.current();
+        if (!scope.isAll()) {
+            throw BizException.forbidden("仅管理员可删除年级");
+        }
         gradeRepository.delete(grade);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<OptionItem> options() {
+        DataScope scope = accessService.current();
+        return gradeRepository.findByStatus(1).stream()
+                .filter(grade -> scope.isAll() || (scope.getGradeIds() != null && scope.getGradeIds().contains(grade.getId())))
+                .map(grade -> new OptionItem(grade.getId(), grade.getGradeName(), null))
+                .collect(Collectors.toList());
     }
     
     @Override

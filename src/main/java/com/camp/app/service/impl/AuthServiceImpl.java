@@ -1,329 +1,379 @@
 package com.camp.app.service.impl;
 
+import com.camp.app.api.BizException;
+import com.camp.app.entity.AuthRefreshToken;
 import com.camp.app.entity.Student;
 import com.camp.app.entity.User;
 import com.camp.app.model.ActivateUserRequest;
+import com.camp.app.model.AdminResetPasswordRequest;
+import com.camp.app.model.ChangePasswordRequest;
+import com.camp.app.model.DataScope;
 import com.camp.app.model.LoginRequest;
 import com.camp.app.model.LoginResponse;
+import com.camp.app.model.ProfileUpdateRequest;
+import com.camp.app.repository.AuthRefreshTokenRepository;
 import com.camp.app.repository.StudentRepository;
 import com.camp.app.repository.UserRepository;
+import com.camp.app.security.AuthContext;
+import com.camp.app.security.AuthPrincipal;
+import com.camp.app.security.JwtService;
+import com.camp.app.security.Phase1Roles;
+import com.camp.app.service.AccessService;
+import com.camp.app.service.AuditLogService;
 import com.camp.app.service.AuthService;
 import com.camp.app.util.PasswordEncoderUtil;
+import io.jsonwebtoken.Claims;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
+import java.security.SecureRandom;
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
-/**
- * 认证服务实现类
- * 使用BCrypt进行密码加密和验证
- * 支持三类身份登录：1-学生，2-教工，3-家长/访客
- */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuthServiceImpl implements AuthService {
-    
+
     private final UserRepository userRepository;
     private final StudentRepository studentRepository;
-    
-    // 默认密码标识（用于判断是否首次登录）
+    private final JwtService jwtService;
+    private final AuthRefreshTokenRepository authRefreshTokenRepository;
+    private final AccessService accessService;
+    private final AuditLogService auditLogService;
+
     private static final String DEFAULT_PASSWORD_PLACEHOLDER = "DEFAULT_PASSWORD_NOT_SET";
-    
+
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public LoginResponse login(LoginRequest request) {
-        log.info("用户登录尝试: identityType={}, identifier={}", request.getIdentityType(), request.getIdentifier());
-        
-        // 1. 验证身份类型
-        if (request.getIdentityType() == null) {
-            throw new RuntimeException("身份类型不能为空");
+        if (request.getIdentityType() != null && request.getIdentityType() == 3) {
+            throw BizException.badRequest("家长与学生同权，请使用 STUDENT 账号登录");
         }
-        
-        // 2. 家长/访客身份不支持登录
-        if (request.getIdentityType() == 3) {
-            throw new RuntimeException("家长/访客身份登录功能暂未实现");
+        String account = firstText(request.getUsername(), request.getIdentifier());
+        if (!StringUtils.hasText(account)) {
+            throw BizException.badRequest("用户名不能为空");
         }
-        
-        User user = null;
-        
-        // 3. 根据身份类型查找用户
-        if (request.getIdentityType() == 1) {
-            // 学生：通过学号查找
-            user = findStudentByStudentNo(request.getIdentifier());
-            if (user == null) {
-                log.warn("登录失败: 学号不存在 - studentNo={}", request.getIdentifier());
-                throw new RuntimeException("学号不存在");
-            }
-        } else if (request.getIdentityType() == 2) {
-            // 教工：通过工号（username）查找
-            Optional<User> userOpt = userRepository.findByUsernameAndUserType(request.getIdentifier(), 2);
-            if (userOpt.isEmpty()) {
-                log.warn("登录失败: 工号不存在 - employeeNo={}", request.getIdentifier());
-                throw new RuntimeException("工号不存在");
-            }
-            user = userOpt.get();
-        } else {
-            throw new RuntimeException("不支持的身份类型");
+        User user = resolveUser(request, account);
+        if (user == null) {
+            auditLogService.record("LOGIN_FAIL", null, "USER", account, "账号不存在", false);
+            throw BizException.unauthorized("账号或密码错误");
         }
-        
-        // 4. 检查用户状态
         if (user.getStatus() == null || user.getStatus() == 0) {
-            log.warn("登录失败: 用户已禁用 - userId={}", user.getId());
-            throw new RuntimeException("用户已被禁用，请联系管理员");
+            auditLogService.record("LOGIN_FAIL", user.getId(), "USER", account, "用户已禁用", false);
+            throw BizException.unauthorized("用户已被禁用，请联系管理员");
         }
-        
-        // 5. 判断是否首次登录（密码未设置）
-        // 优先判断是否首次登录，避免直接提示密码不能为空
-        String encodedPassword = user.getPassword();
-        boolean isFirstLoginUser = (encodedPassword == null || encodedPassword.isEmpty() || 
-            encodedPassword.equals(DEFAULT_PASSWORD_PLACEHOLDER) ||
-            isDefaultPassword(encodedPassword));
-        
-        if (isFirstLoginUser) {
-            // 首次登录，需要验证姓名并激活
-            
-            // 验证姓名（必须提供）
-            if (request.getRealName() == null || request.getRealName().trim().isEmpty()) {
-                String identifierName = request.getIdentityType() == 1 ? "学号" : "工号";
-                throw new RuntimeException(String.format("首次登录需要提供姓名进行验证，请输入%s对应的姓名", identifierName));
+        boolean placeholder = isDefaultPassword(user.getPassword());
+        boolean mustChange = Boolean.TRUE.equals(user.getMustChangePassword()) || placeholder;
+        if (placeholder) {
+            if (!StringUtils.hasText(request.getRealName()) || !user.getRealName().equals(request.getRealName().trim())) {
+                if (!StringUtils.hasText(request.getPassword()) || !safeMatch(request.getPassword(), user.getPassword())) {
+                    auditLogService.record("LOGIN_FAIL", user.getId(), "USER", account, "首次登录验证失败", false);
+                    throw BizException.unauthorized("首次登录需要提供匹配的姓名，或由管理员重置密码后再登录");
+                }
             }
-            
-            // 验证姓名是否匹配
-            if (!user.getRealName().equals(request.getRealName().trim())) {
-                String errorMsg = request.getIdentityType() == 1 ? 
-                    "学号与姓名不匹配，请确认" : "工号与姓名不匹配，请确认";
-                log.warn("登录失败: {} - identifier={}, providedName={}, actualName={}", 
-                    errorMsg, request.getIdentifier(), request.getRealName(), user.getRealName());
-                throw new RuntimeException(errorMsg);
-            }
-            
-            // 姓名验证成功，返回首次登录响应，提示设置密码
-            String identifierName = request.getIdentityType() == 1 ? "学号" : "工号";
-            log.info("首次登录验证成功: {}={}, 姓名={}", identifierName, request.getIdentifier(), user.getRealName());
-            
-            return LoginResponse.builder()
-                    .isFirstLogin(true)
-                    .message(String.format("该%s对应用户信息已激活，请设置密码（密码长度不少于6位）", identifierName))
-                    .userInfo(LoginResponse.UserInfo.builder()
-                            .id(user.getId())
-                            .username(user.getUsername())
-                            .realName(user.getRealName())
-                            .userType(user.getUserType())
-                            .avatarUrl(user.getAvatarUrl())
-                            .build())
-                    .build();
+            return issue(user, true, "请先设置密码");
         }
-        
-        // 6. 正常登录：验证密码（只有已激活用户才需要密码）
-        if (request.getPassword() == null || request.getPassword().trim().isEmpty()) {
-            throw new RuntimeException("密码不能为空");
+        if (!StringUtils.hasText(request.getPassword()) || !safeMatch(request.getPassword(), user.getPassword())) {
+            auditLogService.record("LOGIN_FAIL", user.getId(), "USER", account, "密码错误", false);
+            throw BizException.unauthorized("账号或密码错误");
         }
-        
-        boolean passwordMatches = PasswordEncoderUtil.matches(request.getPassword(), encodedPassword);
-        if (!passwordMatches) {
-            log.warn("登录失败: 密码错误 - userId={}", user.getId());
-            throw new RuntimeException("密码错误");
-        }
-        
-        // 7. 登录成功，构建响应
-        log.info("登录成功: userId={}, identityType={}", user.getId(), request.getIdentityType());
-        
-        // TODO: 生成JWT Token（暂时返回固定值）
-        String token = "mock-jwt-token-" + user.getId();
-        String refreshToken = "mock-refresh-token-" + user.getId();
-        
-        LoginResponse.UserInfo userInfo = LoginResponse.UserInfo.builder()
-                .id(user.getId())
-                .username(user.getUsername())
-                .realName(user.getRealName())
-                .userType(user.getUserType())
-                .avatarUrl(user.getAvatarUrl())
-                .build();
-        
-        return LoginResponse.builder()
-                .isFirstLogin(false)
-                .token(token)
-                .refreshToken(refreshToken)
-                .userInfo(userInfo)
-                .build();
+        return issue(user, mustChange, mustChange ? "请先修改初始密码" : null);
     }
-    
+
     @Override
     @Transactional
     public LoginResponse activateUser(ActivateUserRequest request) {
-        log.info("激活用户: identityType={}, identifier={}", request.getIdentityType(), request.getIdentifier());
-        
-        // 1. 验证身份类型
-        if (request.getIdentityType() == null || (request.getIdentityType() != 1 && request.getIdentityType() != 2)) {
-            throw new RuntimeException("身份类型错误，仅支持学生和教工");
+        Long currentUserId = AuthContext.userId();
+        if (currentUserId != null) {
+            User user = userRepository.findById(currentUserId)
+                    .orElseThrow(() -> BizException.notFound("用户不存在"));
+            String newPassword = firstText(request.getNewPassword(), request.getPassword());
+            if (!StringUtils.hasText(newPassword) || newPassword.length() < 6) {
+                throw BizException.badRequest("密码长度不能少于6位");
+            }
+            user.setPassword(PasswordEncoderUtil.encode(newPassword));
+            user.setMustChangePassword(false);
+            if (StringUtils.hasText(request.getPhone())) {
+                user.setPhone(request.getPhone().trim());
+            }
+            userRepository.save(user);
+            return issue(user, false, "已完成首次改密");
         }
-        
-        User user = null;
-        
-        // 2. 根据身份类型查找用户
-        if (request.getIdentityType() == 1) {
-            // 学生：通过学号查找
-            user = findStudentByStudentNo(request.getIdentifier());
+        if (request.getIdentityType() != null && request.getIdentityType() != 1 && request.getIdentityType() != 2) {
+            throw BizException.badRequest("身份类型错误，仅支持学生和教工");
+        }
+        if (!StringUtils.hasText(request.getIdentifier()) || !StringUtils.hasText(request.getRealName())) {
+            throw BizException.unauthorized("请先登录后再修改初始密码");
+        }
+        User user = request.getIdentityType() != null && request.getIdentityType() == 2
+                ? userRepository.findByUsername(request.getIdentifier()).orElse(null)
+                : findStudentByStudentNo(request.getIdentifier());
+        if (request.getIdentityType() == null) {
+            user = userRepository.findByUsername(request.getIdentifier()).orElse(null);
             if (user == null) {
-                throw new RuntimeException("学号不存在");
+                user = findStudentByStudentNo(request.getIdentifier());
             }
-        } else if (request.getIdentityType() == 2) {
-            // 教工：通过工号查找
-            Optional<User> userOpt = userRepository.findByUsernameAndUserType(request.getIdentifier(), 2);
-            if (userOpt.isEmpty()) {
-                throw new RuntimeException("工号不存在");
-            }
-            user = userOpt.get();
-        } else {
-            throw new RuntimeException("不支持的身份类型");
         }
-        
-        // 3. 验证用户是否存在
         if (user == null) {
-            String errorMsg = request.getIdentityType() == 1 ? 
-                "学号不存在" : "工号不存在";
-            throw new RuntimeException(errorMsg);
+            throw BizException.notFound("账号不存在");
         }
-        
-        // 4. 验证姓名
         if (!user.getRealName().equals(request.getRealName().trim())) {
-            String errorMsg = request.getIdentityType() == 1 ? 
-                "学号与姓名不匹配，请确认" : "工号与姓名不匹配，请确认";
-            log.warn("激活失败: {} - identifier={}, providedName={}, actualName={}", 
-                errorMsg, request.getIdentifier(), request.getRealName(), user.getRealName());
-            throw new RuntimeException(errorMsg);
+            throw BizException.badRequest("姓名不匹配");
         }
-        
-        // 5. 验证密码长度（至少6位）
-        if (request.getPassword() == null || request.getPassword().length() < 6) {
-            throw new RuntimeException("密码长度不能少于6位");
+        String newPassword = firstText(request.getNewPassword(), request.getPassword());
+        if (!StringUtils.hasText(newPassword) || newPassword.length() < 6) {
+            throw BizException.badRequest("密码长度不能少于6位");
         }
-        
-        // 6. 使用BCrypt加密密码
-        String encodedPassword = PasswordEncoderUtil.encode(request.getPassword());
-        user.setPassword(encodedPassword);
-        
-        // 7. 保存到数据库
+        user.setPassword(PasswordEncoderUtil.encode(newPassword));
+        user.setMustChangePassword(false);
+        if (StringUtils.hasText(request.getPhone())) {
+            user.setPhone(request.getPhone().trim());
+        }
         userRepository.save(user);
-        
-        log.info("用户激活成功: userId={}", user.getId());
-        
-        // 8. 返回登录响应
-        String token = "mock-jwt-token-" + user.getId();
-        String refreshToken = "mock-refresh-token-" + user.getId();
-        
-        LoginResponse.UserInfo userInfo = LoginResponse.UserInfo.builder()
-                .id(user.getId())
-                .username(user.getUsername())
-                .realName(user.getRealName())
-                .userType(user.getUserType())
-                .avatarUrl(user.getAvatarUrl())
-                .build();
-        
-        return LoginResponse.builder()
-                .isFirstLogin(false)
-                .token(token)
-                .refreshToken(refreshToken)
-                .userInfo(userInfo)
-                .message("激活成功，已设置密码")
-                .build();
+        return issue(user, false, "激活成功，已设置密码");
     }
-    
+
+    @Override
+    @Transactional
+    public LoginResponse refresh(String refreshToken) {
+        if (!StringUtils.hasText(refreshToken)) {
+            throw BizException.unauthorized("缺少 refreshToken");
+        }
+        Claims claims;
+        try {
+            claims = jwtService.parse(refreshToken);
+        } catch (Exception ex) {
+            throw BizException.unauthorized("刷新令牌无效");
+        }
+        if (!"refresh".equals(claims.get("typ", String.class))) {
+            throw BizException.unauthorized("刷新令牌无效");
+        }
+        AuthRefreshToken stored = authRefreshTokenRepository.findByJti(claims.getId())
+                .orElseThrow(() -> BizException.unauthorized("刷新令牌无效"));
+        if (Boolean.TRUE.equals(stored.getRevoked()) || stored.getExpiresAt().isBefore(LocalDateTime.now())) {
+            throw BizException.unauthorized("刷新令牌已失效");
+        }
+        stored.setRevoked(true);
+        authRefreshTokenRepository.save(stored);
+        User user = userRepository.findById(stored.getUserId())
+                .orElseThrow(() -> BizException.unauthorized("用户不存在"));
+        boolean mustChange = Boolean.TRUE.equals(user.getMustChangePassword());
+        return issue(user, mustChange, null);
+    }
+
+    @Override
+    @Transactional
+    public void logout(String refreshToken) {
+        if (!StringUtils.hasText(refreshToken)) {
+            return;
+        }
+        try {
+            Claims claims = jwtService.parse(refreshToken);
+            authRefreshTokenRepository.findByJti(claims.getId()).ifPresent(row -> {
+                row.setRevoked(true);
+                authRefreshTokenRepository.save(row);
+            });
+        } catch (Exception ex) {
+            log.info("登出时刷新令牌无法解析，按已登出处理");
+        }
+    }
+
     @Override
     @Transactional
     public void changePassword(Long userId, String oldPassword, String newPassword) {
-        log.info("修改密码: userId={}", userId);
-        
-        // 1. 查询用户
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("用户不存在"));
-        
-        // 2. 验证旧密码
-        boolean oldPasswordMatches = PasswordEncoderUtil.matches(oldPassword, user.getPassword());
-        if (!oldPasswordMatches) {
-            log.warn("修改密码失败: 旧密码错误 - userId={}", userId);
-            throw new RuntimeException("旧密码错误");
-        }
-        
-        // 3. 验证新密码长度（至少6位）
-        if (newPassword == null || newPassword.length() < 6) {
-            throw new RuntimeException("新密码长度不能少于6位");
-        }
-        
-        // 4. 使用BCrypt加密新密码
-        String encodedNewPassword = PasswordEncoderUtil.encode(newPassword);
-        user.setPassword(encodedNewPassword);
-        
-        // 5. 保存到数据库
-        userRepository.save(user);
-        
-        log.info("密码修改成功: userId={}", userId);
+        ChangePasswordRequest request = new ChangePasswordRequest();
+        request.setOldPassword(oldPassword);
+        request.setNewPassword(newPassword);
+        changePassword(userId, request);
     }
-    
+
+    @Override
+    @Transactional
+    public void changePassword(Long userId, ChangePasswordRequest request) {
+        if (userId == null) {
+            throw BizException.unauthorized("未登录");
+        }
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> BizException.notFound("用户不存在"));
+        if (!safeMatch(request.getOldPassword(), user.getPassword())) {
+            throw BizException.badRequest("旧密码错误");
+        }
+        if (request.getNewPassword() == null || request.getNewPassword().length() < 6) {
+            throw BizException.badRequest("新密码长度不能少于6位");
+        }
+        user.setPassword(PasswordEncoderUtil.encode(request.getNewPassword()));
+        user.setMustChangePassword(false);
+        userRepository.save(user);
+    }
+
     @Override
     @Transactional(readOnly = true)
     public LoginResponse.UserInfo getCurrentUser(Long userId) {
-        log.info("获取当前用户信息: userId={}", userId);
-        
         if (userId == null) {
-            throw new RuntimeException("用户ID不能为空，请先登录");
+            throw BizException.unauthorized("未登录");
         }
-        
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("用户不存在"));
-        
+                .orElseThrow(() -> BizException.notFound("用户不存在"));
+        return userInfo(user);
+    }
+
+    @Override
+    @Transactional
+    public void updateProfile(Long userId, ProfileUpdateRequest request) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> BizException.notFound("用户不存在"));
+        if (request.getEmail() != null) {
+            user.setEmail(request.getEmail());
+        }
+        if (request.getAvatarUrl() != null) {
+            user.setAvatarUrl(request.getAvatarUrl());
+        }
+        if (request.getPhone() != null) {
+            user.setPhone(request.getPhone());
+        }
+        userRepository.save(user);
+    }
+
+    @Override
+    @Transactional
+    public String adminResetPassword(Long operatorId, AdminResetPasswordRequest request) {
+        AuthPrincipal principal = AuthContext.get();
+        if (principal == null || (!principal.roles().contains(Phase1Roles.ADMIN) && !principal.roles().contains(Phase1Roles.ACADEMIC))) {
+            throw BizException.forbidden("仅管理员或教务可重置密码");
+        }
+        if (request.getUserId() == null) {
+            throw BizException.badRequest("userId 不能为空");
+        }
+        User target = userRepository.findById(request.getUserId())
+                .orElseThrow(() -> BizException.notFound("用户不存在"));
+        if (!principal.roles().contains(Phase1Roles.ADMIN)) {
+            List<String> targetRoles = accessService.rolesOf(target);
+            String highest = Phase1Roles.highest(targetRoles);
+            if (Phase1Roles.ADMIN.equals(highest) || Phase1Roles.ACADEMIC.equals(highest)) {
+                throw BizException.forbidden("教务不能重置管理员或教务账号");
+            }
+        }
+        String temp = StringUtils.hasText(request.getTemporaryPassword())
+                ? request.getTemporaryPassword().trim()
+                : randomPassword();
+        if (temp.length() < 6) {
+            throw BizException.badRequest("临时口令至少 6 位");
+        }
+        target.setPassword(PasswordEncoderUtil.encode(temp));
+        target.setMustChangePassword(true);
+        userRepository.save(target);
+        auditLogService.record("ADMIN_RESET_PASSWORD", operatorId, "USER", String.valueOf(target.getId()), "重置为临时口令并强制改密", true);
+        return temp;
+    }
+
+    private LoginResponse issue(User user, boolean firstLogin, String message) {
+        if (firstLogin && !Boolean.TRUE.equals(user.getMustChangePassword())) {
+            user.setMustChangePassword(true);
+            userRepository.save(user);
+        }
+        if (!firstLogin && Boolean.TRUE.equals(user.getMustChangePassword())) {
+            user.setMustChangePassword(false);
+            userRepository.save(user);
+        }
+        List<String> roles = accessService.rolesOf(user);
+        List<String> permissions = accessService.permissionsOf(user);
+        String access = jwtService.createAccessToken(user.getId(), roles, permissions, firstLogin);
+        String jti = jwtService.newJti();
+        String refresh = jwtService.createRefreshToken(user.getId(), jti);
+        AuthRefreshToken row = new AuthRefreshToken();
+        row.setJti(jti);
+        row.setUserId(user.getId());
+        row.setExpiresAt(LocalDateTime.now().plusSeconds(jwtService.getRefreshTtlSeconds()));
+        row.setRevoked(false);
+        authRefreshTokenRepository.save(row);
+        return LoginResponse.builder()
+                .isFirstLogin(firstLogin)
+                .accessToken(access)
+                .token(access)
+                .refreshToken(refresh)
+                .userInfo(userInfo(user))
+                .message(message)
+                .build();
+    }
+
+    private LoginResponse.UserInfo userInfo(User user) {
+        DataScope scope = accessService.scopeOf(user.getId());
         return LoginResponse.UserInfo.builder()
                 .id(user.getId())
                 .username(user.getUsername())
                 .realName(user.getRealName())
                 .userType(user.getUserType())
                 .avatarUrl(user.getAvatarUrl())
+                .roles(accessService.rolesOf(user))
+                .permissions(accessService.permissionsOf(user))
+                .dataScope(scope)
                 .build();
     }
-    
-    /**
-     * 通过学号查找学生对应的用户
-     */
+
+    private User resolveUser(LoginRequest request, String account) {
+        if (request.getIdentityType() != null && request.getIdentityType() == 1) {
+            return findStudentByStudentNo(account);
+        }
+        if (request.getIdentityType() != null && request.getIdentityType() == 2) {
+            Optional<User> staff = userRepository.findByUsernameAndUserType(account, 2);
+            if (staff.isPresent()) {
+                return staff.get();
+            }
+            return userRepository.findByUsername(account).filter(user -> user.getUserType() != null && user.getUserType() != 1).orElse(null);
+        }
+        Optional<User> byName = userRepository.findByUsername(account);
+        if (byName.isPresent()) {
+            return byName.get();
+        }
+        return findStudentByStudentNo(account);
+    }
+
     private User findStudentByStudentNo(String studentNo) {
         Optional<Student> studentOpt = studentRepository.findByStudentNo(studentNo);
-        if (studentOpt.isEmpty()) {
+        if (studentOpt.isEmpty() || studentOpt.get().getUserId() == null) {
             return null;
         }
-        
-        Student student = studentOpt.get();
-        if (student.getUserId() == null) {
-            return null;
-        }
-        return userRepository.findById(student.getUserId())
-                .orElse(null);
+        return userRepository.findById(studentOpt.get().getUserId()).orElse(null);
     }
-    
-    /**
-     * 判断是否为默认密码（未设置密码）
-     * 检查密码是否为BCrypt格式，如果不是则认为是默认密码
-     */
+
     private boolean isDefaultPassword(String password) {
-        if (password == null || password.isEmpty()) {
+        if (password == null || password.isEmpty() || password.equals(DEFAULT_PASSWORD_PLACEHOLDER) || password.contains("placeholder")) {
             return true;
         }
-        // 如果是占位符，认为是默认密码
-        if (password.equals(DEFAULT_PASSWORD_PLACEHOLDER)) {
-            return true;
+        boolean bcrypt = password.startsWith("$2a$") || password.startsWith("$2b$") || password.startsWith("$2y$");
+        return !bcrypt || password.length() < 60;
+    }
+
+    private boolean safeMatch(String raw, String encoded) {
+        try {
+            return PasswordEncoderUtil.matches(raw, encoded);
+        } catch (Exception ex) {
+            return false;
         }
-        // 如果是占位符格式（$2a$05$placeholder），认为是默认密码
-        if (password.contains("placeholder")) {
-            return true;
+    }
+
+    private String firstText(String a, String b) {
+        if (StringUtils.hasText(a)) {
+            return a.trim();
         }
-        // BCrypt格式以$2a$、$2b$或$2y$开头，且长度至少60字符
-        // 如果不符合BCrypt格式，或长度不足，则认为是默认密码
-        boolean isBcryptFormat = password.startsWith("$2a$") || password.startsWith("$2b$") || password.startsWith("$2y$");
-        if (!isBcryptFormat) {
-            return true; // 不是BCrypt格式，认为是默认密码
+        if (StringUtils.hasText(b)) {
+            return b.trim();
         }
-        // 是BCrypt格式，但长度不足60字符，可能是占位符
-        return password.length() < 60;
+        return null;
+    }
+
+    private String randomPassword() {
+        final String alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+        SecureRandom random = new SecureRandom();
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < 8; i++) {
+            builder.append(alphabet.charAt(random.nextInt(alphabet.length())));
+        }
+        return builder.toString();
     }
 }

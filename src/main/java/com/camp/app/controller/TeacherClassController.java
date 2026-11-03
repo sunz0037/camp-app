@@ -2,14 +2,17 @@ package com.camp.app.controller;
 
 import com.camp.app.api.BaseResponse;
 import com.camp.app.api.PageResult;
+import com.camp.app.model.IdListRequest;
 import com.camp.app.model.TeacherClassVo;
+import com.camp.app.security.Phase1Permissions;
+import com.camp.app.security.RequirePermission;
 import com.camp.app.service.TeacherClassService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 @RequiredArgsConstructor
 @RestController
-@RequestMapping("/api/teachers/{teacherId}/classes")
+@RequestMapping("/api/v1/teachers/{teacherId}/classes")
 public class TeacherClassController {
 
     private final TeacherClassService teacherClassService;
@@ -21,7 +24,15 @@ public class TeacherClassController {
         return BaseResponse.ok(teacherClassService.list(teacherId, page, size));
     }
 
+    @PutMapping
+    @RequirePermission(Phase1Permissions.ORG_WRITE)
+    public BaseResponse<Void> replace(@PathVariable Long teacherId, @RequestBody IdListRequest request) {
+        teacherClassService.replace(teacherId, request.getClassIds());
+        return BaseResponse.ok(null);
+    }
+
     @PostMapping
+    @RequirePermission(Phase1Permissions.ORG_WRITE)
     public BaseResponse<Void> create(@PathVariable Long teacherId, @RequestBody TeacherClassVo tc) {
         teacherClassService.create(teacherId, tc);
         return BaseResponse.ok(null);

@@ -2,6 +2,7 @@ package com.camp.app.controller;
 
 import com.camp.app.api.BaseResponse;
 import com.camp.app.model.EmergencyContactVo;
+import com.camp.app.service.AccessService;
 import com.camp.app.service.EmergencyContactService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -13,16 +14,18 @@ import java.util.List;
  */
 @RequiredArgsConstructor
 @RestController
-@RequestMapping("/api/emergency-contacts")
+@RequestMapping("/api/v1/emergency-contacts")
 public class EmergencyContactController {
     
     private final EmergencyContactService emergencyContactService;
+    private final AccessService accessService;
     
     /**
      * 根据学生ID查询所有应急联系人
      */
     @GetMapping("/by-student/{studentId}")
     public BaseResponse<List<EmergencyContactVo>> listByStudentId(@PathVariable Long studentId) {
+        accessService.assertStudentVisible(studentId);
         return BaseResponse.ok(emergencyContactService.listByStudentId(studentId));
     }
     
@@ -65,7 +68,16 @@ public class EmergencyContactController {
      */
     @PutMapping("/set-primary")
     public BaseResponse<Void> setPrimary(@RequestParam Long studentId, @RequestParam Long contactId) {
+        accessService.assertStudentVisible(studentId);
         emergencyContactService.setPrimary(studentId, contactId);
+        return BaseResponse.ok(null);
+    }
+
+    @PutMapping("/{id}/primary")
+    public BaseResponse<Void> primary(@PathVariable Long id) {
+        EmergencyContactVo vo = emergencyContactService.detail(id);
+        accessService.assertStudentVisible(vo.getStudentId());
+        emergencyContactService.setPrimary(vo.getStudentId(), id);
         return BaseResponse.ok(null);
     }
 }
