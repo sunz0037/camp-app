@@ -1,10 +1,43 @@
 # 首期数据库
 
-脚本都在仓库根目录 `db/`，不依赖远程库。本地 MySQL 8 执行即可。
+脚本都在仓库根目录 `db/`。本地开发用 H2，不连远程 MySQL。需要和线上一致时再用本机 MySQL 8。
 
 成绩、访客不在首期必跑路径里。旧文件 `src/main/resources/db/schema.sql` 仍保留，只作历史对照；里面的 `exam_scores`、`visitor_registrations` 是 phase:2。
 
-## 执行顺序
+表名与字段以 phase1 为准（`sys_users`、`edu_*`、`oa_*`，学籍仍是 `students`）。H2 脚本不改名。
+
+## 本地 H2
+
+脚本：`db/h2/schema.sql`、`db/h2/seed.sql`。和 MySQL 版相比，去掉了 `ENGINE`、`utf8mb4`、`ON UPDATE CURRENT_TIMESTAMP`。枚举继续用 `TINYINT`，不用 `BOOLEAN`。自增仍是 `AUTO_INCREMENT`。非唯一索引加了表名前缀，因为 H2 的索引名全库唯一；`uk_*` 名字不变。`course_key` 仍是 `IFNULL(course_id, 0)`。
+
+在仓库根目录启动应用（会自己跑这两份脚本，`ddl-auto=none`）：
+
+```bash
+./gradlew bootRun --args='--spring.profiles.active=h2'
+```
+
+配置在 `src/main/resources/application-h2.properties`。连接串：
+
+```text
+jdbc:h2:mem:camp;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE
+```
+
+用户 `sa`，密码空。控制台 `/h2-console`。工作目录必须是仓库根，因为脚本用 `file:db/h2/`。
+
+只建库、不启动应用时，用 H2 RunScript 指向同一 URL（内存库要在同一进程里跑完 schema 和 seed）。文件库示例：
+
+```bash
+java -cp ~/.gradle/caches/modules-2/files-2.1/com.h2database/h2/*/*/h2-*.jar org.h2.tools.RunScript \
+  -url "jdbc:h2:file:./build/camp-h2;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE" \
+  -user sa -script db/h2/schema.sql
+java -cp ~/.gradle/caches/modules-2/files-2.1/com.h2database/h2/*/*/h2-*.jar org.h2.tools.RunScript \
+  -url "jdbc:h2:file:./build/camp-h2;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE" \
+  -user sa -script db/h2/seed.sql
+```
+
+H2 没有旧库对齐脚本。本地一律空库执行 `db/h2/`。
+
+## MySQL
 
 ### 空库（新环境）
 
@@ -39,7 +72,7 @@ V2 可以在 V1 之后再跑一遍，应当不改变已经对齐的结构。它�
 
 ## 造数
 
-`db/seed/phase1_demo.sql` 可重复执行。账号在 `sys_users`，密码都是 `Demo@123456`。这里只放哈希，没有首次激活或密码重置数据。
+MySQL 用 `db/seed/phase1_demo.sql`，H2 用 `db/h2/seed.sql`，内容相同，都可重复执行。账号在 `sys_users`，密码都是 `Demo@123456`。这里只放哈希，没有首次激活或密码重置数据。
 
 | 用户名 | 角色 | 说明 |
 | --- | --- | --- |
@@ -54,6 +87,6 @@ V2 可以在 V1 之后再跑一遍，应当不改变已经对齐的结构。它�
 
 ## 和 JPA 的关系
 
-本目录只交付 SQL 和说明，不改业务 Java。账号表是 `sys_users`，当前实体仍指向 `users` 以及 `announcements`、`class_courses` 等旧表名。在 API 骨架把 `@Table` 指到新表之前，不要用 `spring.jpa.hibernate.ddl-auto=update` 对着这套库启动，否则 Hibernate 会按旧实体把列加回去。
+`User` 已指向 `sys_users`。`Student` 的 `class_id` / `grade_id` 只保留关联字段可写，避免 Hibernate 重复映射导致起不来。公告、排课、考勤等实体仍指向旧表名。在 API 骨架改完 `@Table` 之前，不要用 `ddl-auto=update`。H2 profile 已关掉 update，改由 `db/h2` 脚本建表。
 
 表名、唯一键和枚举见 [project_doc/db/PHASE1_SCHEMA.md](../project_doc/db/PHASE1_SCHEMA.md)。

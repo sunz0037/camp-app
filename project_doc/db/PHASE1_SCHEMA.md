@@ -1,6 +1,6 @@
 # 首期数据库（phase 1）
 
-空库与旧库的执行顺序见仓库根目录 [db/README.md](../../db/README.md)。
+空库与旧库的执行顺序见仓库根目录 [db/README.md](../../db/README.md)。本地 H2 用 `db/h2/schema.sql` 与 `db/h2/seed.sql`，表结构与本页相同。
 
 账号只做底座：`sys_users` 存登录名和密码哈希，`roles` 存四档角色。没有密码重置表、没有首次激活字段，造数也不覆盖这些流程。`sys_audit_logs` 仍预留密码重置事件码，供以后写入，本批不造这类数据。
 
