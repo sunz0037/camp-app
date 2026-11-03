@@ -2,7 +2,8 @@ package com.camp.app.service.impl;
 
 import com.camp.app.api.BizException;
 import com.camp.app.entity.Role;
-import com.camp.app.entity.RolePermissionGrant;
+import com.camp.app.entity.Permission;
+import com.camp.app.entity.RolePermission;
 import com.camp.app.entity.Student;
 import com.camp.app.entity.SysAffairsGrade;
 import com.camp.app.entity.SysTeacherClass;
@@ -10,7 +11,8 @@ import com.camp.app.entity.User;
 import com.camp.app.entity.UserRole;
 import com.camp.app.model.DataScope;
 import com.camp.app.repository.ClassRepository;
-import com.camp.app.repository.RolePermissionGrantRepository;
+import com.camp.app.repository.PermissionRepository;
+import com.camp.app.repository.RolePermissionRepository;
 import com.camp.app.repository.RoleRepository;
 import com.camp.app.repository.StudentRepository;
 import com.camp.app.repository.SysAffairsGradeRepository;
@@ -38,7 +40,8 @@ public class AccessServiceImpl implements AccessService {
     private final UserRepository userRepository;
     private final UserRoleRepository userRoleRepository;
     private final RoleRepository roleRepository;
-    private final RolePermissionGrantRepository rolePermissionGrantRepository;
+    private final RolePermissionRepository rolePermissionRepository;
+    private final PermissionRepository permissionRepository;
     private final SysTeacherClassRepository sysTeacherClassRepository;
     private final SysAffairsGradeRepository sysAffairsGradeRepository;
     private final StudentRepository studentRepository;
@@ -64,11 +67,18 @@ public class AccessServiceImpl implements AccessService {
         List<String> roles = rolesOf(user);
         LinkedHashSet<String> codes = new LinkedHashSet<>();
         for (String role : roles) {
-            List<RolePermissionGrant> grants = rolePermissionGrantRepository.findByRoleCode(role);
-            if (grants.isEmpty()) {
+            List<String> granted = roleRepository.findByRoleCode(role)
+                    .map(row -> rolePermissionRepository.findByRoleId(row.getId()).stream()
+                            .map(RolePermission::getPermissionId)
+                            .map(permissionRepository::findById)
+                            .flatMap(java.util.Optional::stream)
+                            .map(Permission::getPermissionCode)
+                            .toList())
+                    .orElse(List.of());
+            if (granted.isEmpty()) {
                 codes.addAll(Phase1Permissions.defaultsOf(role));
             } else {
-                grants.forEach(grant -> codes.add(grant.getPermissionCode()));
+                codes.addAll(granted);
             }
         }
         return new ArrayList<>(codes);

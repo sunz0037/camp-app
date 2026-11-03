@@ -89,7 +89,7 @@ public class ClassCourseServiceImpl implements ClassCourseService {
         classCourseRepository.findByClassAndCourseAndSemesterAndYear(
             classCourseVo.getClassId(),
             classCourseVo.getCourseId(),
-            classCourseVo.getSemester(),
+            semesterOf(classCourseVo.getSemester()),
             classCourseVo.getAcademicYear()
         ).ifPresent(existing -> {
             throw new RuntimeException("该班级已存在相同的授课科目关联");
@@ -169,13 +169,13 @@ public class ClassCourseServiceImpl implements ClassCourseService {
         // 检查唯一性（如果修改了关键字段）
         if (!classCourse.getClassEntity().getId().equals(classCourseVo.getClassId()) ||
             !classCourse.getCourse().getId().equals(classCourseVo.getCourseId()) ||
-            !equalsNullable(classCourse.getSemester(), classCourseVo.getSemester()) ||
+            !equalsNullable(classCourse.getSemester(), semesterOf(classCourseVo.getSemester())) ||
             !equalsNullable(classCourse.getAcademicYear(), classCourseVo.getAcademicYear())) {
             
             classCourseRepository.findByClassAndCourseAndSemesterAndYear(
                 classCourseVo.getClassId(),
                 classCourseVo.getCourseId(),
-                classCourseVo.getSemester(),
+                semesterOf(classCourseVo.getSemester()),
                 classCourseVo.getAcademicYear()
             ).ifPresent(existing -> {
                 if (!existing.getId().equals(id)) {
@@ -185,7 +185,7 @@ public class ClassCourseServiceImpl implements ClassCourseService {
         }
         
         // 更新其他字段
-        classCourse.setSemester(classCourseVo.getSemester());
+        classCourse.setSemester(semesterOf(classCourseVo.getSemester()));
         classCourse.setAcademicYear(classCourseVo.getAcademicYear());
         classCourse.setStatus(classCourseVo.getStatus());
         
@@ -246,6 +246,9 @@ public class ClassCourseServiceImpl implements ClassCourseService {
         }
         
         // 设置教师信息
+        if (classCourse.getSemester() != null) {
+            vo.setSemester(String.valueOf(classCourse.getSemester()));
+        }
         if (classCourse.getTeacher() != null) {
             vo.setTeacherId(classCourse.getTeacher().getId());
             vo.setTeacherName(classCourse.getTeacher().getRealName());
@@ -336,6 +339,17 @@ public class ClassCourseServiceImpl implements ClassCourseService {
             }
         }
         return items;
+    }
+
+    private Integer semesterOf(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            return Integer.valueOf(raw.trim());
+        } catch (NumberFormatException ex) {
+            throw BizException.unprocessable("semester 只能是 1 或 2");
+        }
     }
 
     private void replaceSessions(Long classCourseId, List<SessionSlot> sessions) {

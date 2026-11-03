@@ -9,7 +9,7 @@ import lombok.Data;
  */
 @Data
 @Entity
-@Table(name = "class_course_sessions", indexes = @Index(name = "idx_session_class_course", columnList = "class_course_id"))
+@Table(name = "edu_class_course_sessions", indexes = @Index(name = "idx_class_course_id", columnList = "class_course_id"))
 public class ClassCourseSession {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

@@ -5,7 +5,7 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "users")
+@Table(name = "sys_users")
 @Data
 public class User {
     @Id
@@ -35,12 +35,6 @@ public class User {
 
     @Column(nullable = false)
     private Integer status = 1; // 0-禁用，1-启用
-
-    /**
-     * 首次登录或管理员重置后必须改密。空值视为 false，便于旧数据。
-     */
-    @Column(name = "must_change_password")
-    private Boolean mustChangePassword = false;
 
     @Column(length = 255)
     private String avatarUrl;

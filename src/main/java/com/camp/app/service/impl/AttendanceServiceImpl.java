@@ -63,7 +63,7 @@ public class AttendanceServiceImpl implements AttendanceService {
                 .orElse(new ClassAttendanceDaily());
         BeanMapper.copyProperties(vo, daily);
         if (vo.getPresentCount() != null) {
-            daily.setActualCount(vo.getPresentCount());
+            daily.setPresentCount(vo.getPresentCount());
         }
         classAttendanceDailyRepository.save(daily);
     }
@@ -121,7 +121,8 @@ public class AttendanceServiceImpl implements AttendanceService {
     public PageResult<StudentAttendanceRecordVo> listStudentAttendance(long page, long size, String grade, String className, String attendanceDate, Integer status) {
         Pageable pageable = PageRequest.of((int) (page - 1), (int) size);
         LocalDate date = attendanceDate != null ? LocalDate.parse(attendanceDate) : null;
-        Page<StudentAttendanceRecord> recordPage = studentAttendanceRecordRepository.findByFilters(grade, className, date, status, pageable);
+        Page<StudentAttendanceRecord> recordPage = studentAttendanceRecordRepository.findByFilters(
+                grade, className, date, AttendanceCalculator.legacyStatusToCode(status), pageable);
         List<StudentAttendanceRecordVo> voList = recordPage.getContent().stream().map(this::toRecordVo).toList();
         return PageResult.<StudentAttendanceRecordVo>builder()
                 .page(page).size(size).total(recordPage.getTotalElements()).records(voList).build();
@@ -144,8 +145,8 @@ public class AttendanceServiceImpl implements AttendanceService {
         Long filterStudent = effectiveStudentId;
         List<StudentAttendanceRecordVo> voList = recordPage.getContent().stream()
                 .filter(row -> filterStudent == null || filterStudent.equals(row.getStudentId()))
-                .filter(row -> classId == null || classId.equals(row.getClassId()))
-                .filter(row -> "SELF".equals(scope.getLevel()) || inScope(scope, row.getClassId()))
+                .filter(row -> classId == null || classId.equals(classIdOfStudent(row.getStudentId())))
+                .filter(row -> "SELF".equals(scope.getLevel()) || inScope(scope, classIdOfStudent(row.getStudentId())))
                 .map(this::toRecordVo)
                 .toList();
         return PageResult.<StudentAttendanceRecordVo>builder()
@@ -156,7 +157,18 @@ public class AttendanceServiceImpl implements AttendanceService {
     @Transactional
     public void createStudentAttendance(StudentAttendanceRecordVo vo) {
         applyRecordDefaults(vo);
-        StudentAttendanceRecord record = BeanMapper.map(vo, StudentAttendanceRecord.class);
+        StudentAttendanceRecord record = new StudentAttendanceRecord();
+        record.setStudentId(vo.getStudentId());
+        record.setSummaryId(vo.getSummaryId());
+        record.setCourseId(vo.getCourseId());
+        record.setAttendanceDate(vo.getAttendanceDate());
+        record.setGrade(vo.getGrade());
+        record.setClassName(vo.getClassName());
+        record.setExceptionType(AttendanceCalculator.codeOf(vo.getExceptionType()));
+        record.setConfirmStatus(AttendanceCalculator.confirmCode(vo.getConfirmStatus()));
+        record.setReasonType(vo.getReasonType());
+        record.setReasonDetail(vo.getReasonDetail());
+        record.setRecorderId(AuthContext.userId());
         studentAttendanceRecordRepository.save(record);
     }
 
@@ -166,8 +178,21 @@ public class AttendanceServiceImpl implements AttendanceService {
         StudentAttendanceRecord record = studentAttendanceRecordRepository.findById(id)
                 .orElseThrow(() -> BizException.notFound("考勤明细不存在"));
         applyRecordDefaults(vo);
-        BeanMapper.copyProperties(vo, record);
         record.setId(id);
+        if (vo.getStudentId() != null) {
+            record.setStudentId(vo.getStudentId());
+        }
+        if (vo.getCourseId() != null) {
+            record.setCourseId(vo.getCourseId());
+        }
+        if (vo.getAttendanceDate() != null) {
+            record.setAttendanceDate(vo.getAttendanceDate());
+        }
+        record.setExceptionType(AttendanceCalculator.codeOf(vo.getExceptionType()));
+        record.setConfirmStatus(AttendanceCalculator.confirmCode(vo.getConfirmStatus()));
+        if (vo.getReasonDetail() != null) {
+            record.setReasonDetail(vo.getReasonDetail());
+        }
         studentAttendanceRecordRepository.save(record);
     }
 
@@ -224,13 +249,13 @@ public class AttendanceServiceImpl implements AttendanceService {
         daily.setGrade(schoolClass.getGrade() == null ? "" : schoolClass.getGrade().getGradeName());
         daily.setClassName(schoolClass.getClassName());
         daily.setExpectedCount(expected);
-        daily.setActualCount(actual);
+        daily.setPresentCount(actual);
         daily.setAbsentCount(counts.absent());
         daily.setLateCount(counts.late());
         daily.setLeaveCount(counts.leave());
         daily.setEarlyLeaveCount(counts.earlyLeave());
         daily.setRemark(request.getRemark());
-        daily.setRecordedBy(AuthContext.userId());
+        daily.setRecorderId(AuthContext.userId());
         daily = classAttendanceDailyRepository.save(daily);
 
         studentAttendanceRecordRepository.deleteByClassIdAndAttendanceDate(schoolClass.getId(), request.getAttendanceDate());
@@ -239,16 +264,16 @@ public class AttendanceServiceImpl implements AttendanceService {
         for (AttendanceRecordItem item : items) {
             StudentAttendanceRecord record = new StudentAttendanceRecord();
             record.setStudentId(item.getStudentId());
-            record.setClassId(schoolClass.getId());
             record.setSummaryId(daily.getId());
             record.setCourseId(item.getCourseId());
             record.setAttendanceDate(request.getAttendanceDate());
-            record.setExceptionType(item.getExceptionType());
-            record.setConfirmStatus(item.getConfirmStatus() == null ? "CONFIRMED" : item.getConfirmStatus());
-            record.setStatus(AttendanceCalculator.legacyStatus(item.getExceptionType()));
+            record.setGrade(schoolClass.getGrade() == null ? null : schoolClass.getGrade().getGradeName());
+            record.setClassName(schoolClass.getClassName());
+            record.setExceptionType(AttendanceCalculator.codeOf(item.getExceptionType()));
+            record.setConfirmStatus(AttendanceCalculator.confirmCode(item.getConfirmStatus()));
             record.setReasonType("SICK_LEAVE".equals(item.getExceptionType()) ? "sick" : item.getExceptionType().toLowerCase());
-            record.setReasonDescription(item.getReasonDescription());
-            record.setRecordedBy(AuthContext.userId());
+            record.setReasonDetail(item.getReasonDescription());
+            record.setRecorderId(AuthContext.userId());
             studentAttendanceRecordRepository.save(record);
             saved.add(toRecordVo(record));
         }
@@ -261,14 +286,11 @@ public class AttendanceServiceImpl implements AttendanceService {
         if (vo.getExceptionType() == null && vo.getStatus() != null) {
             vo.setExceptionType(AttendanceCalculator.exceptionTypeOf(vo.getStatus()));
         }
-        if (vo.getStatus() == null && vo.getExceptionType() != null) {
-            vo.setStatus(AttendanceCalculator.legacyStatus(vo.getExceptionType()));
+        if (vo.getExceptionType() == null) {
+            throw BizException.unprocessable("缺少出勤异常类型");
         }
         if (vo.getConfirmStatus() == null) {
             vo.setConfirmStatus("CONFIRMED");
-        }
-        if (vo.getStatus() == null) {
-            throw BizException.unprocessable("缺少出勤异常类型");
         }
     }
 
@@ -281,20 +303,41 @@ public class AttendanceServiceImpl implements AttendanceService {
 
     private ClassAttendanceDailyVo toSummaryVo(ClassAttendanceDaily daily) {
         ClassAttendanceDailyVo vo = BeanMapper.map(daily, ClassAttendanceDailyVo.class);
-        vo.setPresentCount(daily.getActualCount());
+        vo.setPresentCount(daily.getPresentCount());
         vo.setClassId(daily.getClassId());
         vo.setEarlyLeaveCount(daily.getEarlyLeaveCount());
         return vo;
     }
 
+    private Long classIdOfStudent(Long studentId) {
+        if (studentId == null) {
+            return null;
+        }
+        return studentRepository.findById(studentId).map(Student::getClassId).orElse(null);
+    }
+
     private StudentAttendanceRecordVo toRecordVo(StudentAttendanceRecord record) {
-        StudentAttendanceRecordVo vo = BeanMapper.map(record, StudentAttendanceRecordVo.class);
-        if (vo.getExceptionType() == null) {
-            vo.setExceptionType(AttendanceCalculator.exceptionTypeOf(record.getStatus()));
-        }
-        if (vo.getConfirmStatus() == null) {
-            vo.setConfirmStatus("CONFIRMED");
-        }
+        StudentAttendanceRecordVo vo = new StudentAttendanceRecordVo();
+        vo.setId(record.getId());
+        vo.setStudentId(record.getStudentId());
+        vo.setSummaryId(record.getSummaryId());
+        vo.setCourseId(record.getCourseId());
+        vo.setAttendanceDate(record.getAttendanceDate());
+        vo.setGrade(record.getGrade());
+        vo.setClassName(record.getClassName());
+        vo.setExceptionType(AttendanceCalculator.nameOf(record.getExceptionType()));
+        vo.setConfirmStatus(AttendanceCalculator.confirmName(record.getConfirmStatus()));
+        vo.setStatus(AttendanceCalculator.legacyStatus(vo.getExceptionType()));
+        vo.setReasonType(record.getReasonType());
+        vo.setReasonDetail(record.getReasonDetail());
+        vo.setNotifiedContactId(record.getNotifiedContactId());
+        vo.setNotifiedContactName(record.getNotifiedContactName());
+        vo.setNotifiedMethod(record.getNotifiedMethod());
+        vo.setNotifiedAt(record.getNotifiedAt());
+        vo.setAttachmentUrl(record.getAttachmentUrl());
+        vo.setRecorderId(record.getRecorderId());
+        vo.setCreatedAt(record.getCreatedAt());
+        vo.setUpdatedAt(record.getUpdatedAt());
         return vo;
     }
 }

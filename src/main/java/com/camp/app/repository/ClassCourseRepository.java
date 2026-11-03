@@ -47,7 +47,7 @@ public interface ClassCourseRepository extends JpaRepository<ClassCourse, Long> 
     Optional<ClassCourse> findByClassAndCourseAndSemesterAndYear(
         @Param("classId") Long classId,
         @Param("courseId") Long courseId,
-        @Param("semester") String semester,
+        @Param("semester") Integer semester,
         @Param("academicYear") String academicYear
     );
     

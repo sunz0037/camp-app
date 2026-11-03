@@ -1,34 +1,51 @@
 package com.camp.app.service.impl;
 
 import com.camp.app.api.BizException;
-import com.camp.app.entity.StoredFile;
 import com.camp.app.model.FileVo;
-import com.camp.app.repository.StoredFileRepository;
 import com.camp.app.service.FileStorageService;
-import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicLong;
 
+/**
+ * 首期库没有文件表。元数据写在上传目录的 index.tsv，避免 JPA 另建表。
+ */
 @Service
-@RequiredArgsConstructor
 public class FileStorageServiceImpl implements FileStorageService {
-    private final StoredFileRepository storedFileRepository;
+    private final Path dir;
+    private final Path index;
+    private final AtomicLong sequence = new AtomicLong(1);
 
-    @Value("${camp.upload.dir:data/uploads}")
-    private String uploadDir;
+    public FileStorageServiceImpl(@Value("${camp.upload.dir:data/uploads}") String uploadDir) {
+        this.dir = Path.of(uploadDir);
+        this.index = dir.resolve("index.tsv");
+        try {
+            Files.createDirectories(dir);
+            if (Files.exists(index)) {
+                for (String line : Files.readAllLines(index)) {
+                    String[] cols = line.split("\t", -1);
+                    if (cols.length > 0 && !cols[0].isBlank()) {
+                        sequence.updateAndGet(current -> Math.max(current, Long.parseLong(cols[0]) + 1));
+                    }
+                }
+            }
+        } catch (IOException | NumberFormatException ex) {
+            throw new IllegalStateException("无法准备上传目录", ex);
+        }
+    }
 
     @Override
-    @Transactional
-    public FileVo upload(MultipartFile file, Long uploaderId) {
+    public synchronized FileVo upload(MultipartFile file, Long uploaderId) {
         if (uploaderId == null) {
             throw BizException.unauthorized("未登录");
         }
@@ -36,34 +53,25 @@ public class FileStorageServiceImpl implements FileStorageService {
             throw BizException.badRequest("文件不能为空");
         }
         try {
-            Path dir = Path.of(uploadDir);
-            Files.createDirectories(dir);
-            String storedName = UUID.randomUUID() + "-" + sanitize(file.getOriginalFilename());
-            Path target = dir.resolve(storedName);
-            file.transferTo(target);
-            StoredFile row = new StoredFile();
-            row.setOriginalName(file.getOriginalFilename() == null ? storedName : file.getOriginalFilename());
-            row.setStoredName(storedName);
-            row.setContentType(file.getContentType());
-            row.setSizeBytes(file.getSize());
-            row.setUploaderId(uploaderId);
-            storedFileRepository.save(row);
-            return FileVo.builder()
-                    .fileId(row.getId())
-                    .url("/api/v1/files/" + row.getId())
-                    .originalName(row.getOriginalName())
-                    .build();
+            long id = sequence.getAndIncrement();
+            String storedName = id + "-" + sanitize(file.getOriginalFilename());
+            file.transferTo(dir.resolve(storedName));
+            String original = file.getOriginalFilename() == null ? storedName : file.getOriginalFilename().replace('\t', ' ');
+            String contentType = file.getContentType() == null ? "" : file.getContentType();
+            String line = id + "\t" + storedName + "\t" + original + "\t" + contentType + "\t" + uploaderId + "\n";
+            Files.writeString(index, line, StandardCharsets.UTF_8, Files.exists(index)
+                    ? java.nio.file.StandardOpenOption.APPEND
+                    : java.nio.file.StandardOpenOption.CREATE);
+            return FileVo.builder().fileId(id).url("/api/v1/files/" + id).originalName(original).build();
         } catch (IOException ex) {
             throw BizException.badRequest("文件保存失败");
         }
     }
 
     @Override
-    @Transactional(readOnly = true)
     public Resource load(Long fileId) {
-        StoredFile row = storedFileRepository.findById(fileId)
-                .orElseThrow(() -> BizException.notFound("文件不存在"));
-        Path path = Path.of(uploadDir).resolve(row.getStoredName());
+        String[] row = find(fileId);
+        Path path = dir.resolve(row[1]);
         if (!Files.exists(path)) {
             throw BizException.notFound("文件不存在");
         }
@@ -71,25 +79,44 @@ public class FileStorageServiceImpl implements FileStorageService {
     }
 
     @Override
-    @Transactional(readOnly = true)
     public String contentType(Long fileId) {
-        return storedFileRepository.findById(fileId).map(StoredFile::getContentType).orElse("application/octet-stream");
+        String type = find(fileId)[3];
+        return type == null || type.isBlank() ? "application/octet-stream" : type;
     }
 
     @Override
-    @Transactional
-    public void delete(Long fileId, Long operatorId, boolean admin) {
-        StoredFile row = storedFileRepository.findById(fileId)
-                .orElseThrow(() -> BizException.notFound("文件不存在"));
-        if (!admin && (operatorId == null || !operatorId.equals(row.getUploaderId()))) {
+    public synchronized void delete(Long fileId, Long operatorId, boolean admin) {
+        String[] row = find(fileId);
+        long owner = Long.parseLong(row[4]);
+        if (!admin && (operatorId == null || owner != operatorId)) {
             throw BizException.forbidden("只能删除自己上传的文件");
         }
         try {
-            Files.deleteIfExists(Path.of(uploadDir).resolve(row.getStoredName()));
-        } catch (IOException ignored) {
-            // 元数据仍删除，避免悬挂记录
+            Files.deleteIfExists(dir.resolve(row[1]));
+            List<String> lines = Files.readAllLines(index).stream()
+                    .filter(line -> !line.startsWith(fileId + "\t"))
+                    .toList();
+            Files.write(index, lines);
+        } catch (IOException ex) {
+            throw BizException.badRequest("文件删除失败");
         }
-        storedFileRepository.delete(row);
+    }
+
+    private String[] find(Long fileId) {
+        try {
+            if (!Files.exists(index)) {
+                throw BizException.notFound("文件不存在");
+            }
+            for (String line : Files.readAllLines(index)) {
+                String[] cols = line.split("\t", -1);
+                if (cols.length >= 5 && cols[0].equals(String.valueOf(fileId))) {
+                    return cols;
+                }
+            }
+        } catch (IOException ex) {
+            throw BizException.notFound("文件不存在");
+        }
+        throw BizException.notFound("文件不存在");
     }
 
     private String sanitize(String name) {

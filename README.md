@@ -54,13 +54,22 @@
 
 建表：[db/README.md](db/README.md)。
 
-## 开发态鉴权
+## 本地联调
 
-只在 `--spring.profiles.active=dev` 或 `camp.dev-auth.enabled=true` 时生效。业务接口按这个身份做权限和数据范围，不走完整密码登录。
+- 端口 `8080`，没有额外 context-path，接口前缀 `/api/v1`
+- 开发库用 H2：`jdbc:h2:file:./data/camp`（也可改成 `jdbc:h2:mem:camp`）
+- 启动时 Flyway 执行仓根 `db/migration`（`V1` 空库，`V2` 旧库对齐），随后执行 `db/seed/phase1_demo.sql`
+- 表结构以这两份 SQL 为准，`spring.jpa.hibernate.ddl-auto=none`，Hibernate 不改表
+- CORS 允许 `http://localhost:5173` 与 `http://localhost:4173`（同时保留 3000）
+- 演示账号密码都是 `Demo@123456`。空库种子用户依次是 `admin`、`academic01`、`teacher01`、`student01`，可用 `X-Dev-User-Id` 绑定（空库上通常是 1–4）
 
 ```bash
 ./gradlew bootRun --args='--spring.profiles.active=dev'
 ```
+
+## 开发态鉴权
+
+只在 `--spring.profiles.active=dev` 或 `camp.dev-auth.enabled=true` 时生效。业务接口按这个身份做权限和数据范围，不走完整密码登录。
 
 ```http
 Authorization: Bearer dev-TEACHER

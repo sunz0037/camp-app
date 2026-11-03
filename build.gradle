@@ -28,6 +28,8 @@ dependencies {
     
     // MySQL Database Driver
     implementation 'com.mysql:mysql-connector-j'
+    implementation 'org.flywaydb:flyway-core'
+    runtimeOnly 'com.h2database:h2'
     
     // H2 Database (commented out, using MySQL)
     // implementation 'com.h2database:h2'

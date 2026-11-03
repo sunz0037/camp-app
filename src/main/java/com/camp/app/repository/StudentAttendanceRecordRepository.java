@@ -17,7 +17,7 @@ public interface StudentAttendanceRecordRepository extends JpaRepository<Student
     List<StudentAttendanceRecord> findBySummaryId(Long summaryId);
 
     @Modifying
-    @Query("delete from StudentAttendanceRecord r where r.classId = :classId and r.attendanceDate = :attendanceDate")
+    @Query("delete from StudentAttendanceRecord r where r.attendanceDate = :attendanceDate and r.studentId in (select s.id from Student s where s.classId = :classId)")
     void deleteByClassIdAndAttendanceDate(@Param("classId") Long classId, @Param("attendanceDate") LocalDate attendanceDate);
 
     @Modifying
@@ -29,11 +29,11 @@ public interface StudentAttendanceRecordRepository extends JpaRepository<Student
            "(:grade IS NULL OR s.grade = :grade) AND " +
            "(:className IS NULL OR s.className = :className) AND " +
            "(:attendanceDate IS NULL OR r.attendanceDate = :attendanceDate) AND " +
-           "(:status IS NULL OR r.status = :status)")
+           "(:exceptionType IS NULL OR r.exceptionType = :exceptionType)")
     Page<StudentAttendanceRecord> findByFilters(@Param("grade") String grade,
                                                   @Param("className") String className,
                                                   @Param("attendanceDate") LocalDate attendanceDate,
-                                                  @Param("status") Integer status,
+                                                  @Param("exceptionType") Integer exceptionType,
                                                   Pageable pageable);
 }
 

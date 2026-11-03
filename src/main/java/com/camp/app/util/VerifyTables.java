@@ -20,10 +20,11 @@ public class VerifyTables {
     
     // 期望的表列表
     private static final String[] EXPECTED_TABLES = {
-        "users", "students", "emergency_contacts", "courses", "exam_scores",
-        "announcements", "visitor_registrations", "roles", "permissions",
-        "role_permissions", "user_roles", "teacher_classes", "grade_admin_grades",
-        "data_query_permissions", "class_attendance_daily", "student_attendance_records"
+        "sys_users", "students", "emergency_contacts", "courses", "edu_class_courses",
+        "edu_class_course_sessions", "edu_attendance_summaries", "edu_attendance_records",
+        "oa_announcements", "oa_announcement_scopes", "oa_announcement_reads",
+        "roles", "permissions", "role_permissions", "user_roles",
+        "sys_teacher_classes", "sys_affairs_grades", "sys_audit_logs"
     };
     
     public static void main(String[] args) {

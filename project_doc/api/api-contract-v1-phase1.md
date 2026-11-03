@@ -1,6 +1,6 @@
 # 校园OA 首期接口契约骨架（Phase 1）
 
-> 本文件为后端联调契约（架构评审 v1.0.1）。首期 DDL 见仓库根 `db/migration/`、`db/seed/`、`db/README.md`。
+> 本文件为后端联调契约（架构评审 v1.0.1）。首期 DDL 以数据库 PR 为准：`db/migration/V1__phase1_schema.sql`（空库）、`V2__phase1_legacy_align.sql`（旧库）、`db/seed/phase1_demo.sql`（密码 `Demo@123456`）。
 >
 > **开发态鉴权**（仅 `spring.profiles.active=dev` 或 `camp.dev-auth.enabled=true`）：
 > `Authorization: Bearer dev-ADMIN|dev-ACADEMIC|dev-TEACHER|dev-STUDENT`，或请求头 `X-Dev-Role` 取同样的角色名。

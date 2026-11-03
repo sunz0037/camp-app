@@ -1,7 +1,6 @@
 package com.camp.app.service.impl;
 
 import com.camp.app.api.BizException;
-import com.camp.app.entity.AuthRefreshToken;
 import com.camp.app.entity.Student;
 import com.camp.app.entity.User;
 import com.camp.app.model.ActivateUserRequest;
@@ -11,12 +10,12 @@ import com.camp.app.model.DataScope;
 import com.camp.app.model.LoginRequest;
 import com.camp.app.model.LoginResponse;
 import com.camp.app.model.ProfileUpdateRequest;
-import com.camp.app.repository.AuthRefreshTokenRepository;
 import com.camp.app.repository.StudentRepository;
 import com.camp.app.repository.UserRepository;
 import com.camp.app.security.AuthContext;
 import com.camp.app.security.AuthPrincipal;
 import com.camp.app.security.JwtService;
+import com.camp.app.security.RefreshTokenStore;
 import com.camp.app.security.Phase1Roles;
 import com.camp.app.service.AccessService;
 import com.camp.app.service.AuditLogService;
@@ -42,7 +41,7 @@ public class AuthServiceImpl implements AuthService {
     private final UserRepository userRepository;
     private final StudentRepository studentRepository;
     private final JwtService jwtService;
-    private final AuthRefreshTokenRepository authRefreshTokenRepository;
+    private final RefreshTokenStore refreshTokenStore;
     private final AccessService accessService;
     private final AuditLogService auditLogService;
 
@@ -68,7 +67,7 @@ public class AuthServiceImpl implements AuthService {
             throw BizException.unauthorized("用户已被禁用，请联系管理员");
         }
         boolean placeholder = isDefaultPassword(user.getPassword());
-        boolean mustChange = Boolean.TRUE.equals(user.getMustChangePassword()) || placeholder;
+        boolean mustChange = placeholder;
         if (placeholder) {
             if (!StringUtils.hasText(request.getRealName()) || !user.getRealName().equals(request.getRealName().trim())) {
                 if (!StringUtils.hasText(request.getPassword()) || !safeMatch(request.getPassword(), user.getPassword())) {
@@ -97,7 +96,6 @@ public class AuthServiceImpl implements AuthService {
                 throw BizException.badRequest("密码长度不能少于6位");
             }
             user.setPassword(PasswordEncoderUtil.encode(newPassword));
-            user.setMustChangePassword(false);
             if (StringUtils.hasText(request.getPhone())) {
                 user.setPhone(request.getPhone().trim());
             }
@@ -130,7 +128,6 @@ public class AuthServiceImpl implements AuthService {
             throw BizException.badRequest("密码长度不能少于6位");
         }
         user.setPassword(PasswordEncoderUtil.encode(newPassword));
-        user.setMustChangePassword(false);
         if (StringUtils.hasText(request.getPhone())) {
             user.setPhone(request.getPhone().trim());
         }
@@ -153,17 +150,15 @@ public class AuthServiceImpl implements AuthService {
         if (!"refresh".equals(claims.get("typ", String.class))) {
             throw BizException.unauthorized("刷新令牌无效");
         }
-        AuthRefreshToken stored = authRefreshTokenRepository.findByJti(claims.getId())
+        RefreshTokenStore.Token stored = refreshTokenStore.find(claims.getId())
                 .orElseThrow(() -> BizException.unauthorized("刷新令牌无效"));
-        if (Boolean.TRUE.equals(stored.getRevoked()) || stored.getExpiresAt().isBefore(LocalDateTime.now())) {
+        if (stored.revoked() || stored.expiresAt().isBefore(LocalDateTime.now())) {
             throw BizException.unauthorized("刷新令牌已失效");
         }
-        stored.setRevoked(true);
-        authRefreshTokenRepository.save(stored);
-        User user = userRepository.findById(stored.getUserId())
+        refreshTokenStore.revoke(claims.getId());
+        User user = userRepository.findById(stored.userId())
                 .orElseThrow(() -> BizException.unauthorized("用户不存在"));
-        boolean mustChange = Boolean.TRUE.equals(user.getMustChangePassword());
-        return issue(user, mustChange, null);
+        return issue(user, isDefaultPassword(user.getPassword()), null);
     }
 
     @Override
@@ -174,10 +169,7 @@ public class AuthServiceImpl implements AuthService {
         }
         try {
             Claims claims = jwtService.parse(refreshToken);
-            authRefreshTokenRepository.findByJti(claims.getId()).ifPresent(row -> {
-                row.setRevoked(true);
-                authRefreshTokenRepository.save(row);
-            });
+            refreshTokenStore.revoke(claims.getId());
         } catch (Exception ex) {
             log.info("登出时刷新令牌无法解析，按已登出处理");
         }
@@ -207,7 +199,6 @@ public class AuthServiceImpl implements AuthService {
             throw BizException.badRequest("新密码长度不能少于6位");
         }
         user.setPassword(PasswordEncoderUtil.encode(request.getNewPassword()));
-        user.setMustChangePassword(false);
         userRepository.save(user);
     }
 
@@ -265,32 +256,18 @@ public class AuthServiceImpl implements AuthService {
             throw BizException.badRequest("临时口令至少 6 位");
         }
         target.setPassword(PasswordEncoderUtil.encode(temp));
-        target.setMustChangePassword(true);
         userRepository.save(target);
         auditLogService.record("ADMIN_RESET_PASSWORD", operatorId, "USER", String.valueOf(target.getId()), "重置为临时口令并强制改密", true);
         return temp;
     }
 
     private LoginResponse issue(User user, boolean firstLogin, String message) {
-        if (firstLogin && !Boolean.TRUE.equals(user.getMustChangePassword())) {
-            user.setMustChangePassword(true);
-            userRepository.save(user);
-        }
-        if (!firstLogin && Boolean.TRUE.equals(user.getMustChangePassword())) {
-            user.setMustChangePassword(false);
-            userRepository.save(user);
-        }
         List<String> roles = accessService.rolesOf(user);
         List<String> permissions = accessService.permissionsOf(user);
         String access = jwtService.createAccessToken(user.getId(), roles, permissions, firstLogin);
         String jti = jwtService.newJti();
         String refresh = jwtService.createRefreshToken(user.getId(), jti);
-        AuthRefreshToken row = new AuthRefreshToken();
-        row.setJti(jti);
-        row.setUserId(user.getId());
-        row.setExpiresAt(LocalDateTime.now().plusSeconds(jwtService.getRefreshTtlSeconds()));
-        row.setRevoked(false);
-        authRefreshTokenRepository.save(row);
+        refreshTokenStore.save(jti, user.getId(), LocalDateTime.now().plusSeconds(jwtService.getRefreshTtlSeconds()));
         return LoginResponse.builder()
                 .isFirstLogin(firstLogin)
                 .accessToken(access)

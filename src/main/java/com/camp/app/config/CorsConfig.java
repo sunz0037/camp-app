@@ -10,7 +10,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 /**
  * CORS跨域配置
- * 允许前端（localhost:3000）访问后端API
+ * 允许前端开发服务访问后端 API
  */
 @Configuration
 public class CorsConfig implements WebMvcConfigurer {
@@ -22,7 +22,13 @@ public class CorsConfig implements WebMvcConfigurer {
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/api/**")
                 // 允许的源（前端地址）- Spring Boot 3.x使用allowedOriginPatterns
-                .allowedOriginPatterns("http://localhost:3000", "http://127.0.0.1:3000")
+                .allowedOriginPatterns(
+                        "http://localhost:3000",
+                        "http://127.0.0.1:3000",
+                        "http://localhost:5173",
+                        "http://127.0.0.1:5173",
+                        "http://localhost:4173",
+                        "http://127.0.0.1:4173")
                 // 允许的HTTP方法
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH")
                 // 允许的请求头
@@ -44,6 +50,10 @@ public class CorsConfig implements WebMvcConfigurer {
         // 允许的源（Spring Boot 3.x使用allowedOriginPatterns）
         config.addAllowedOriginPattern("http://localhost:3000");
         config.addAllowedOriginPattern("http://127.0.0.1:3000");
+        config.addAllowedOriginPattern("http://localhost:5173");
+        config.addAllowedOriginPattern("http://127.0.0.1:5173");
+        config.addAllowedOriginPattern("http://localhost:4173");
+        config.addAllowedOriginPattern("http://127.0.0.1:4173");
         
         // 允许的HTTP方法
         config.addAllowedMethod("*");

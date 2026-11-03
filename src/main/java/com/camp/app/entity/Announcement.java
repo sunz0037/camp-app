@@ -5,7 +5,7 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "announcements")
+@Table(name = "oa_announcements")
 @Data
 public class Announcement {
     @Id
@@ -37,14 +37,6 @@ public class Announcement {
 
     @Column(length = 50)
     private String targetAudience;
-
-    /** ALL | GRADE | CLASS。空值按全校可见，兼容旧公告。 */
-    @Column(name = "scope_type", length = 20)
-    private String scopeType;
-
-    /** 逗号分隔的年级或班级 ID。 */
-    @Column(name = "scope_ids", length = 1000)
-    private String scopeIds;
 
     @Column(nullable = false)
     private Integer viewCount = 0;

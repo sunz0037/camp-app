@@ -48,6 +48,69 @@ public final class AttendanceCalculator {
         };
     }
 
+    public static int codeOf(String exceptionType) {
+        if (exceptionType == null) {
+            throw new IllegalArgumentException("exceptionType 不能为空");
+        }
+        return switch (exceptionType) {
+            case "LATE" -> 1;
+            case "EARLY_LEAVE" -> 2;
+            case "PERSONAL_LEAVE" -> 3;
+            case "SICK_LEAVE" -> 4;
+            case "ABSENT" -> 5;
+            default -> throw new IllegalArgumentException("未知异常类型: " + exceptionType);
+        };
+    }
+
+    public static String nameOf(Integer code) {
+        if (code == null) {
+            return null;
+        }
+        return switch (code) {
+            case 1 -> "LATE";
+            case 2 -> "EARLY_LEAVE";
+            case 3 -> "PERSONAL_LEAVE";
+            case 4 -> "SICK_LEAVE";
+            case 5 -> "ABSENT";
+            default -> null;
+        };
+    }
+
+    public static int confirmCode(String status) {
+        if (status == null || status.isBlank()) {
+            return 2;
+        }
+        return switch (status) {
+            case "PENDING" -> 1;
+            case "CLEARED" -> 3;
+            default -> 2;
+        };
+    }
+
+    public static String confirmName(Integer code) {
+        if (code == null) {
+            return "CONFIRMED";
+        }
+        return switch (code) {
+            case 1 -> "PENDING";
+            case 3 -> "CLEARED";
+            default -> "CONFIRMED";
+        };
+    }
+
+    public static Integer legacyStatusToCode(Integer legacyStatus) {
+        if (legacyStatus == null) {
+            return null;
+        }
+        return switch (legacyStatus) {
+            case 1 -> 5;
+            case 2 -> 1;
+            case 3 -> 3;
+            case 4 -> 2;
+            default -> legacyStatus;
+        };
+    }
+
     public static String exceptionTypeOf(Integer status) {
         if (status == null) {
             return null;

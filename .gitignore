@@ -27,3 +27,6 @@ bin/
 # Logs
 *.log
 
+# 本地 H2 与上传
+/data/
+

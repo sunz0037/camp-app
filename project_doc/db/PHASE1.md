@@ -1,18 +1,17 @@
 # 首期库表说明
 
-建表与演示数据以仓库根目录为准：
+建表与演示数据以数据库 PR 的仓根脚本为准：
 
-- `db/migration/V1__phase1_schema.sql`
-- `db/seed/V1__phase1_demo.sql`
-- 执行顺序见 `db/README.md`
+- `db/migration/V1__phase1_schema.sql`：空库
+- `db/migration/V2__phase1_legacy_align.sql`：旧库对齐
+- `db/seed/phase1_demo.sql`：演示数据，密码 `Demo@123456`
 
-`src/main/resources/db/schema.sql` 及同目录其它脚本是旧的六角色 / 考试 / 访客全量，不作为首期权威 DDL。
+执行顺序见 `db/README.md`。应用使用 `ddl-auto=none`，不另起一套表名。
 
-## 和旧模型的差异
+## 表名
 
-- 角色四档：`ADMIN`、`ACADEMIC`、`TEACHER`、`STUDENT`。家长使用学生账号，不建家长绑定。
-- 数据范围用 `sys_teacher_classes`、`sys_affairs_grades`，不用 `scope_json`。
-- 课表是 `class_course_sessions`（`weekday`、`period_start`、`period_end`、`room_no`）。
-- 考勤汇总 `class_attendance_daily` 按班级和日期，不挂 `course_id`。明细 `student_attendance_records.course_id` 可空。
-- 公告 `scope_type` + `scope_ids`，已读表 `announcement_reads` 对 `(announcement_id, user_id)` 唯一。
-- 不包含成绩表、访客表。
+账号 `sys_users`。授课与考勤 `edu_class_courses`、`edu_class_course_sessions`、`edu_attendance_summaries`、`edu_attendance_records`。公告 `oa_announcements`、`oa_announcement_scopes`、`oa_announcement_reads`。审计 `sys_audit_logs`。数据范围 `sys_teacher_classes`、`sys_affairs_grades`。
+
+年级、班级、学生、课程库、角色仍是 `grades`、`classes`、`students`、`courses`、`roles`。
+
+`src/main/resources/db/schema.sql` 是旧的无前缀全量，不是首期入口。

@@ -6,8 +6,8 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "class_attendance_daily", uniqueConstraints = {
-    @UniqueConstraint(columnNames = {"attendance_date", "grade", "class_name"})
+@Table(name = "edu_attendance_summaries", uniqueConstraints = {
+    @UniqueConstraint(name = "uk_class_id_attendance_date", columnNames = {"class_id", "attendance_date"})
 })
 @Data
 public class ClassAttendanceDaily {
@@ -18,38 +18,37 @@ public class ClassAttendanceDaily {
     @Column(nullable = false)
     private LocalDate attendanceDate;
 
-    @Column(nullable = false, length = 20)
+    @Column(length = 20)
     private String grade;
 
-    @Column(nullable = false, length = 50)
+    @Column(length = 50)
     private String className;
 
-    /** 首期汇总按班级+日期，不挂 courseId。 */
-    @Column(name = "class_id")
+    @Column(name = "class_id", nullable = false)
     private Long classId;
 
-    @Column(name = "early_leave_count")
-    private Integer earlyLeaveCount;
+    @Column(nullable = false)
+    private Integer expectedCount = 0;
+
+    @Column(name = "present_count", nullable = false)
+    private Integer presentCount = 0;
 
     @Column(nullable = false)
-    private Integer expectedCount;
+    private Integer absentCount = 0;
 
     @Column(nullable = false)
-    private Integer actualCount;
+    private Integer lateCount = 0;
 
     @Column(nullable = false)
-    private Integer absentCount;
+    private Integer leaveCount = 0;
 
-    @Column(nullable = false)
-    private Integer lateCount;
+    @Column(name = "early_leave_count", nullable = false)
+    private Integer earlyLeaveCount = 0;
 
-    @Column(nullable = false)
-    private Integer leaveCount;
+    @Column(name = "recorder_id")
+    private Long recorderId;
 
-    @Column(name = "recorded_by")
-    private Long recordedBy;
-
-    @Column(length = 500)
+    @Column(length = 255)
     private String remark;
 
     @Column(nullable = false, updatable = false)
@@ -69,4 +68,3 @@ public class ClassAttendanceDaily {
         updatedAt = LocalDateTime.now();
     }
 }
-

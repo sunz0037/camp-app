@@ -4,10 +4,12 @@ import com.camp.app.api.BizException;
 import com.camp.app.api.PageResult;
 import com.camp.app.entity.Announcement;
 import com.camp.app.entity.AnnouncementRead;
+import com.camp.app.entity.AnnouncementScope;
 import com.camp.app.model.AnnouncementVo;
 import com.camp.app.model.DataScope;
 import com.camp.app.repository.AnnouncementReadRepository;
 import com.camp.app.repository.AnnouncementRepository;
+import com.camp.app.repository.AnnouncementScopeRepository;
 import com.camp.app.security.AuthContext;
 import com.camp.app.security.AuthPrincipal;
 import com.camp.app.security.Phase1Roles;
@@ -32,6 +34,7 @@ import java.util.stream.Collectors;
 public class AnnouncementServiceImpl implements AnnouncementService {
     private final AnnouncementRepository announcementRepository;
     private final AnnouncementReadRepository announcementReadRepository;
+    private final AnnouncementScopeRepository announcementScopeRepository;
     private final AccessService accessService;
 
     @Override
@@ -99,8 +102,6 @@ public class AnnouncementServiceImpl implements AnnouncementService {
         }
         assertCanPublish(vo);
         Announcement announcement = BeanMapper.map(vo, Announcement.class);
-        announcement.setScopeType(vo.getScopeType() == null ? "ALL" : vo.getScopeType());
-        announcement.setScopeIds(joinIds(vo.getScopeIds()));
         if (announcement.getPublisherId() == null) {
             announcement.setPublisherId(AuthContext.userId());
         }
@@ -108,6 +109,7 @@ public class AnnouncementServiceImpl implements AnnouncementService {
             announcement.setStatus(1);
         }
         announcementRepository.save(announcement);
+        replaceScopes(announcement.getId(), vo.getScopeType() == null ? "ALL" : vo.getScopeType(), vo.getScopeIds());
     }
 
     @Override
@@ -117,9 +119,10 @@ public class AnnouncementServiceImpl implements AnnouncementService {
                 .orElseThrow(() -> BizException.notFound("公告不存在"));
         assertCanEdit(announcement);
         if (vo.getScopeType() != null || vo.getScopeIds() != null) {
+            ScopeView current = scopeView(announcement.getId());
             AnnouncementVo check = new AnnouncementVo();
-            check.setScopeType(vo.getScopeType() == null ? announcement.getScopeType() : vo.getScopeType());
-            check.setScopeIds(vo.getScopeIds() == null ? parseIds(announcement.getScopeIds()) : vo.getScopeIds());
+            check.setScopeType(vo.getScopeType() == null ? current.type() : vo.getScopeType());
+            check.setScopeIds(vo.getScopeIds() == null ? current.ids() : vo.getScopeIds());
             assertCanPublish(check);
         }
         if (vo.getTitle() != null) {
@@ -146,11 +149,11 @@ public class AnnouncementServiceImpl implements AnnouncementService {
         if (vo.getAttachmentUrl() != null) {
             announcement.setAttachmentUrl(vo.getAttachmentUrl());
         }
-        if (vo.getScopeType() != null) {
-            announcement.setScopeType(vo.getScopeType());
-        }
-        if (vo.getScopeIds() != null) {
-            announcement.setScopeIds(joinIds(vo.getScopeIds()));
+        if (vo.getScopeType() != null || vo.getScopeIds() != null) {
+            ScopeView current = scopeView(announcement.getId());
+            replaceScopes(announcement.getId(),
+                    vo.getScopeType() == null ? current.type() : vo.getScopeType(),
+                    vo.getScopeIds() == null ? current.ids() : vo.getScopeIds());
         }
         announcement.setUpdatedAt(LocalDateTime.now());
         announcementRepository.save(announcement);
@@ -241,11 +244,12 @@ public class AnnouncementServiceImpl implements AnnouncementService {
                 return false;
             }
         }
-        String scopeType = announcement.getScopeType();
+        ScopeView current = scopeView(announcement.getId());
+        String scopeType = current.type();
         if (scope.isAll() || scopeType == null || scopeType.isBlank() || "ALL".equals(scopeType)) {
             return true;
         }
-        List<Long> ids = parseIds(announcement.getScopeIds());
+        List<Long> ids = current.ids();
         if ("GRADE".equals(scopeType)) {
             return intersects(ids, scope.getGradeIds());
         }
@@ -257,8 +261,9 @@ public class AnnouncementServiceImpl implements AnnouncementService {
 
     private AnnouncementVo toVo(Announcement announcement, boolean ignoreReadLookup) {
         AnnouncementVo vo = BeanMapper.map(announcement, AnnouncementVo.class);
-        vo.setScopeType(announcement.getScopeType() == null ? "ALL" : announcement.getScopeType());
-        vo.setScopeIds(parseIds(announcement.getScopeIds()));
+        ScopeView current = scopeView(announcement.getId());
+        vo.setScopeType(current.type());
+        vo.setScopeIds(current.ids());
         DataScope scope = accessService.current();
         if (!ignoreReadLookup && scope.getUserId() != null && announcement.getId() != null) {
             vo.setIsRead(announcementReadRepository.findByAnnouncementIdAndUserId(announcement.getId(), scope.getUserId()).isPresent());
@@ -281,21 +286,41 @@ public class AnnouncementServiceImpl implements AnnouncementService {
         return false;
     }
 
-    private List<Long> parseIds(String raw) {
-        if (raw == null || raw.isBlank()) {
-            return List.of();
-        }
-        return Arrays.stream(raw.split(","))
-                .map(String::trim)
-                .filter(part -> !part.isEmpty())
-                .map(Long::valueOf)
-                .collect(Collectors.toCollection(ArrayList::new));
+    private record ScopeView(String type, List<Long> ids) {
     }
 
-    private String joinIds(List<Long> ids) {
-        if (ids == null || ids.isEmpty()) {
-            return null;
+    private ScopeView scopeView(Long announcementId) {
+        if (announcementId == null) {
+            return new ScopeView("ALL", List.of());
         }
-        return ids.stream().map(String::valueOf).collect(Collectors.joining(","));
+        List<AnnouncementScope> rows = announcementScopeRepository.findByAnnouncementId(announcementId);
+        if (rows.isEmpty() || rows.stream().anyMatch(row -> row.getScopeType() != null && row.getScopeType() == 1)) {
+            return new ScopeView("ALL", List.of());
+        }
+        if (rows.stream().anyMatch(row -> row.getScopeType() != null && row.getScopeType() == 2)) {
+            return new ScopeView("GRADE", rows.stream().map(AnnouncementScope::getScopeId).filter(id -> id != null && id > 0).toList());
+        }
+        return new ScopeView("CLASS", rows.stream().map(AnnouncementScope::getScopeId).filter(id -> id != null && id > 0).toList());
+    }
+
+    private void replaceScopes(Long announcementId, String scopeType, List<Long> scopeIds) {
+        announcementScopeRepository.deleteByAnnouncementId(announcementId);
+        String type = scopeType == null ? "ALL" : scopeType;
+        if ("ALL".equals(type) || scopeIds == null || scopeIds.isEmpty()) {
+            AnnouncementScope row = new AnnouncementScope();
+            row.setAnnouncementId(announcementId);
+            row.setScopeType(1);
+            row.setScopeId(0L);
+            announcementScopeRepository.save(row);
+            return;
+        }
+        int code = "GRADE".equals(type) ? 2 : 3;
+        for (Long scopeId : scopeIds) {
+            AnnouncementScope row = new AnnouncementScope();
+            row.setAnnouncementId(announcementId);
+            row.setScopeType(code);
+            row.setScopeId(scopeId);
+            announcementScopeRepository.save(row);
+        }
     }
 }
