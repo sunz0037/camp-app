@@ -56,22 +56,22 @@
 
 ## 本地联调
 
-本地启动连 **H2 内存库**，不依赖远程 MySQL。默认 profile 就是 `dev`（并带上 `h2`）。
+本地启动连 **H2 内存库**，不依赖远程 MySQL。配置与数据库 PR 的 `application-h2` 相同，脚本只走 `db/h2/`。
 
 ```bash
-./gradlew bootRun --args='--spring.profiles.active=dev'
+./gradlew bootRun --args='--spring.profiles.active=h2'
 ```
 
 - 端口 `8080`，没有额外 context-path，接口前缀 `/api/v1`
 - 连接串：`jdbc:h2:mem:camp;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE`（用户 `sa`，密码空）
-- 启动时自动执行 `db/h2/schema.sql` 和 `db/h2/seed.sql`。这是给 H2 的适配脚本（去掉 `ENGINE` / `PREPARE`，索引名按表加前缀）。MySQL 空库仍用 `db/migration/V1__phase1_schema.sql` + `db/seed/phase1_demo.sql`，旧库用 `V2`
+- 启动时自动执行 `db/h2/schema.sql` 和 `db/h2/seed.sql`。MySQL 空库用 `db/migration/V1__phase1_schema.sql` + `db/seed/phase1_demo.sql`，旧库用 `V2`
 - `spring.jpa.hibernate.ddl-auto=none`，Hibernate 不改表
 - CORS 允许 `http://localhost:5173` 与 `http://localhost:4173`（同时保留 3000）
 - 演示账号密码都是 `Demo@123456`。用户名 `admin`、`academic01`、`teacher01`、`student01`，用 `X-Dev-User-Id` 绑定（空库上通常是 1–4）
 
 ## 开发态鉴权
 
-只在 `--spring.profiles.active=dev` 或 `camp.dev-auth.enabled=true` 时生效。业务接口按这个身份做权限和数据范围，不走完整密码登录。
+`h2` profile 下生效（也可设 `camp.dev-auth.enabled=true`）。业务接口按这个身份做权限和数据范围，不走完整密码登录。
 
 ```http
 Authorization: Bearer dev-TEACHER

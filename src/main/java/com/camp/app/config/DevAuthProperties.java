@@ -6,7 +6,7 @@ import org.springframework.core.env.Profiles;
 import org.springframework.stereotype.Component;
 
 /**
- * profile=dev 或 camp.dev-auth.enabled=true 时接受开发态身份。
+ * profile=h2、profile=dev，或 camp.dev-auth.enabled=true 时接受开发态身份。
  */
 @Component
 public class DevAuthProperties {
@@ -21,6 +21,6 @@ public class DevAuthProperties {
     }
 
     public boolean isEnabled() {
-        return enabledFlag || environment.acceptsProfiles(Profiles.of("dev"));
+        return enabledFlag || environment.acceptsProfiles(Profiles.of("h2", "dev"));
     }
 }
