@@ -56,16 +56,18 @@
 
 ## 本地联调
 
-- 端口 `8080`，没有额外 context-path，接口前缀 `/api/v1`
-- 开发库用 H2：`jdbc:h2:file:./data/camp`（也可改成 `jdbc:h2:mem:camp`）
-- 启动时 Flyway 执行仓根 `db/migration`（`V1` 空库，`V2` 旧库对齐），随后执行 `db/seed/phase1_demo.sql`
-- 表结构以这两份 SQL 为准，`spring.jpa.hibernate.ddl-auto=none`，Hibernate 不改表
-- CORS 允许 `http://localhost:5173` 与 `http://localhost:4173`（同时保留 3000）
-- 演示账号密码都是 `Demo@123456`。空库种子用户依次是 `admin`、`academic01`、`teacher01`、`student01`，可用 `X-Dev-User-Id` 绑定（空库上通常是 1–4）
+本地启动连 **H2 内存库**，不依赖远程 MySQL。默认 profile 就是 `dev`（并带上 `h2`）。
 
 ```bash
 ./gradlew bootRun --args='--spring.profiles.active=dev'
 ```
+
+- 端口 `8080`，没有额外 context-path，接口前缀 `/api/v1`
+- 连接串：`jdbc:h2:mem:camp;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE`（用户 `sa`，密码空）
+- 启动时自动执行 `db/h2/schema.sql` 和 `db/h2/seed.sql`。这是给 H2 的适配脚本（去掉 `ENGINE` / `PREPARE`，索引名按表加前缀）。MySQL 空库仍用 `db/migration/V1__phase1_schema.sql` + `db/seed/phase1_demo.sql`，旧库用 `V2`
+- `spring.jpa.hibernate.ddl-auto=none`，Hibernate 不改表
+- CORS 允许 `http://localhost:5173` 与 `http://localhost:4173`（同时保留 3000）
+- 演示账号密码都是 `Demo@123456`。用户名 `admin`、`academic01`、`teacher01`、`student01`，用 `X-Dev-User-Id` 绑定（空库上通常是 1–4）
 
 ## 开发态鉴权
 

@@ -27,9 +27,13 @@ mysql -u root -p camp < db/seed/phase1_demo.sql
 
 ## H2 联调
 
-`application-dev.properties` 使用 `jdbc:h2:file:./data/camp`（可改成 `jdbc:h2:mem:camp`）。`./gradlew bootRun --args='--spring.profiles.active=dev'` 读取仓根 `db/migration/V1__phase1_schema.sql` 和 `db/seed/phase1_demo.sql`。空 H2 不跑 V2（V2 只给已有 MySQL 旧库）。H2 不支持 MySQL 的 `PREPARE` 和部分索引名，启动时只在内存里改写语句，不改 SQL 文件。
+不要把 MySQL 的 `db/migration` 直接丢给 H2（有 `PREPARE`、库级不唯一的索引名）。适配脚本是 `db/h2/schema.sql` 和 `db/h2/seed.sql`，表名与 MySQL 首期库相同。
 
-Hibernate `ddl-auto=none`，不根据实体建表。
+```bash
+./gradlew bootRun --args='--spring.profiles.active=dev'
+```
+
+`dev` 会带上 profile `h2`：内存库 `jdbc:h2:mem:camp`，启动时执行上述两份脚本，`ddl-auto=none`。等价配置见 `src/main/resources/application-h2.properties`。
 
 ## 演示账号
 
