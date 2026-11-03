@@ -182,12 +182,15 @@
 
 ---
 
-## 10. Phase 2 仅清单（不实现）
+## 10. Phase 2
 
-- `/exam-schedules`、`/scores`、GPA 统计
-- `/visitors/**` 含公开预约与门岗核销
-- `/statistics/**` 报表中心
-- 短信验证码与公开找回密码
+二期已实现的路径、字段和角色矩阵见 `api-contract-v1-phase2.md`：`/exams`、`/exam-scores`、`/visitors`、`POST /auth/change-password`、`POST /auth/reset-password`、`/me/settings`。
+
+以下仍不在本期：
+
+- 旧路径 `/exam-schedules`、`/scores`（`camp.phase2.enabled=false` 时不注册）
+- GPA 统计、`/statistics/**` 报表中心
+- 短信网关（找回密码在短信关闭时用开发态验证码 `000000`）
 - 独立 `/todos`
 
 ---

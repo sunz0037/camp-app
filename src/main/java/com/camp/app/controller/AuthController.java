@@ -63,6 +63,12 @@ public class AuthController {
         return BaseResponse.ok(null);
     }
 
+    @PostMapping("/change-password")
+    public BaseResponse<Void> changePasswordPost(@RequestBody ChangePasswordRequest body) {
+        authService.changePassword(AuthContext.userId(), body);
+        return BaseResponse.ok(null);
+    }
+
     @PutMapping("/password")
     public BaseResponse<Void> changePassword(@RequestBody(required = false) ChangePasswordRequest body,
                                              @RequestParam(required = false) Long userId,

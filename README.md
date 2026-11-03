@@ -50,7 +50,7 @@
 
 首期打通：组织（年级/班级）、学生与应急联系人、课程库与班级授课（`weekday` + `periodStart` + `periodEnd` + `roomNo`）、考勤汇总与异常明细、公告与已读、工作台 `GET /api/v1/dashboard/overview`。
 
-考试/成绩、访客、短信找回默认关闭（`camp.phase2.enabled=false`、`camp.sms.enabled=false`）。与旧文档里的六角色（含后勤/访客/年级管理员）和考试访客全量接口不是同一交付面。
+二期契约：[project_doc/api/api-contract-v1-phase2.md](project_doc/api/api-contract-v1-phase2.md)。考试安排、成绩、来访、改密和用户主题走 `/exams`、`/exam-scores`、`/visitors`、`/auth/change-password`、`/me/settings`。旧路径 `/exam-schedules`、`/scores` 仍由 `camp.phase2.enabled=false` 关闭。短信网关默认关闭；找回密码使用开发态验证码 `000000`。
 
 建表：[db/README.md](db/README.md)。
 

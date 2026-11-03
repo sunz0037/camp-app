@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.*;
 
 @RequiredArgsConstructor
 @RestController
-@ConditionalOnProperty(name = "camp.phase2.enabled", havingValue = "true")
+@ConditionalOnProperty(name = "camp.legacy-visitor-api.enabled", havingValue = "true")
 @RequestMapping("/api/v1/visitors")
 public class VisitorController {
 

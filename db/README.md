@@ -6,7 +6,9 @@
 | --- | --- |
 | `db/migration/V1__phase1_schema.sql` | 空库建首期表 |
 | `db/migration/V2__phase1_legacy_align.sql` | 已有旧库时改名、补列 |
+| `db/migration/V3__phase2_exam_visitor_settings.sql` | 二期：考试、成绩、来访、用户主题 |
 | `db/seed/phase1_demo.sql` | 演示数据。密码都是 `Demo@123456` |
+| `db/seed/phase2_demo.sql` | 二期演示：考试、成绩、来访、主题。学生身份证为虚构号码 |
 
 ## MySQL
 
@@ -15,14 +17,18 @@
 ```bash
 mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS camp DEFAULT CHARSET utf8mb4;"
 mysql -u root -p camp < db/migration/V1__phase1_schema.sql
+mysql -u root -p camp < db/migration/V3__phase2_exam_visitor_settings.sql
 mysql -u root -p camp < db/seed/phase1_demo.sql
+mysql -u root -p camp < db/seed/phase2_demo.sql
 ```
 
 旧库只跑 V2，不要再跑 V1：
 
 ```bash
 mysql -u root -p camp < db/migration/V2__phase1_legacy_align.sql
+mysql -u root -p camp < db/migration/V3__phase2_exam_visitor_settings.sql
 mysql -u root -p camp < db/seed/phase1_demo.sql
+mysql -u root -p camp < db/seed/phase2_demo.sql
 ```
 
 ## H2 联调
@@ -48,4 +54,4 @@ mysql -u root -p camp < db/seed/phase1_demo.sql
 
 id 若不是这组，用请求头 `X-Dev-User-Id` 指到种子用户。密码 `Demo@123456`。
 
-首期不建考试成绩、访客表。
+二期表在 `V3__phase2_exam_visitor_settings.sql`（H2 写在 `db/h2/schema.sql`）。契约见 `project_doc/api/api-contract-v1-phase2.md`。

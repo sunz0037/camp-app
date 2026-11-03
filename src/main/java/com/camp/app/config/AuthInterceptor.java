@@ -72,7 +72,9 @@ public class AuthInterceptor implements HandlerInterceptor {
             return false;
         }
         String path = request.getRequestURI();
-        return path.endsWith("/api/v1/auth/login") || path.endsWith("/api/v1/auth/refresh");
+        return path.endsWith("/api/v1/auth/login")
+                || path.endsWith("/api/v1/auth/refresh")
+                || path.endsWith("/api/v1/auth/reset-password");
     }
 
     private boolean isWrite(HttpServletRequest request) {
@@ -85,6 +87,7 @@ public class AuthInterceptor implements HandlerInterceptor {
         return path.contains("/api/v1/auth/activate")
                 || path.contains("/api/v1/auth/logout")
                 || path.contains("/api/v1/auth/password")
+                || path.contains("/api/v1/auth/change-password")
                 || path.contains("/api/v1/auth/refresh");
     }
 

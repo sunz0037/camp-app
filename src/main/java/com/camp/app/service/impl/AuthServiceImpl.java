@@ -190,9 +190,13 @@ public class AuthServiceImpl implements AuthService {
         if (userId == null) {
             throw BizException.unauthorized("未登录");
         }
+        if (request == null) {
+            throw BizException.badRequest("请求体不能为空");
+        }
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> BizException.notFound("用户不存在"));
         if (!safeMatch(request.getOldPassword(), user.getPassword())) {
+            auditLogService.record("CHANGE_PASSWORD", userId, "USER", String.valueOf(userId), "旧密码错误", false);
             throw BizException.badRequest("旧密码错误");
         }
         if (request.getNewPassword() == null || request.getNewPassword().length() < 6) {
@@ -200,6 +204,7 @@ public class AuthServiceImpl implements AuthService {
         }
         user.setPassword(PasswordEncoderUtil.encode(request.getNewPassword()));
         userRepository.save(user);
+        auditLogService.record("CHANGE_PASSWORD", userId, "USER", String.valueOf(userId), "用户修改密码", true);
     }
 
     @Override
