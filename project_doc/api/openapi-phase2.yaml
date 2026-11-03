@@ -1,0 +1,54 @@
+openapi: 3.0.3
+info:
+  title: 校园OA二期增量
+  version: 2.0.0
+  description: |
+    在首期 /api/v1 上补充写路径返回体、文件和考试。
+    访客、短信、待办、GPA 汇总未实现，见 api-contract-v1-phase2.md。
+servers:
+  - url: http://localhost:8080/api/v1
+paths:
+  /files/upload:
+    post:
+      summary: 上传
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+                purpose: { type: string, enum: [AVATAR, ANNOUNCEMENT, OTHER] }
+      responses:
+        "200":
+          description: data.fileId 与 data.url
+  /files/{fileId}:
+    parameters: [{ name: fileId, in: path, required: true, schema: { type: integer } }]
+    get: { summary: 读取文件, responses: { "200": { description: bytes } } }
+    delete: { summary: 删除, responses: { "200": { description: OK } } }
+  /exam-schedules:
+    get: { summary: 考试安排列表, responses: { "200": { description: OK } } }
+    post:
+      summary: 创建考试安排 course:write
+      responses: { "200": { description: 返回安排 } }
+  /exam-schedules/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    put: { summary: 更新, responses: { "200": { description: OK } } }
+    delete: { summary: 删除, responses: { "200": { description: OK } } }
+  /exam-schedules/{id}/cancel:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    put: { summary: 取消, responses: { "200": { description: OK } } }
+  /scores:
+    get: { summary: 成绩列表。学生仅本人, responses: { "200": { description: OK } } }
+    post: { summary: 录入 course:write, responses: { "200": { description: 返回成绩，含 gradePoint } } }
+  /scores/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    put: { summary: 修改成绩, responses: { "200": { description: OK } } }
+    delete: { summary: 删除成绩, responses: { "200": { description: OK } } }
+components:
+  securitySchemes:
+    devBearer:
+      type: http
+      scheme: bearer

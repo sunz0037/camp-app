@@ -1,5 +1,6 @@
 package com.camp.app.service.impl;
 
+import com.camp.app.api.BizException;
 import com.camp.app.api.PageResult;
 import com.camp.app.entity.ExamSchedule;
 import com.camp.app.entity.User;
@@ -83,7 +84,7 @@ public class ExamScheduleServiceImpl implements ExamScheduleService {
     @Transactional(readOnly = true)
     public ExamScheduleVo getById(Long id) {
         ExamSchedule examSchedule = examScheduleRepository.findById(id)
-            .orElseThrow(() -> new RuntimeException("考试安排不存在"));
+            .orElseThrow(() -> BizException.notFound("考试安排不存在"));
         return convertToVo(examSchedule);
     }
     
@@ -92,19 +93,23 @@ public class ExamScheduleServiceImpl implements ExamScheduleService {
     public ExamScheduleVo create(ExamScheduleVo vo, Long createdBy) {
         // 验证创建人是否为教工
         User creator = userRepository.findById(createdBy)
-            .orElseThrow(() -> new RuntimeException("创建人不存在"));
-        if (creator.getUserType() == null || creator.getUserType() != 2) {
-            throw new RuntimeException("只有教工可以创建考试安排");
+            .orElseThrow(() -> BizException.notFound("创建人不存在"));
+        if (creator.getUserType() == null || (creator.getUserType() != 2 && creator.getUserType() != 3)) {
+            throw BizException.forbidden("只有教务或管理员可以创建考试安排");
         }
-        
-        // 验证考试类型
-        if (!isValidExamType(vo.getExamType())) {
-            throw new RuntimeException("考试类型无效，必须是：月考、期中、期末");
+        if (vo == null || vo.getExamName() == null || vo.getExamName().isBlank() || vo.getExamDate() == null) {
+            throw BizException.badRequest("考试名称和时间不能为空");
         }
-        
-        // 验证年级格式
+        String examType = normalizeExamType(vo.getExamType());
+        if (examType == null) {
+            throw BizException.unprocessable("考试类型必须是月考、期中、期末（或 MONTHLY、MIDTERM、FINAL）");
+        }
         if (!isValidGrade(vo.getTargetGrade())) {
-            throw new RuntimeException("年级格式无效，必须是：小学1-6年级、初中1-3年级、高中1-3年级");
+            throw BizException.badRequest("年级不能为空");
+        }
+        vo.setExamType(examType);
+        if (vo.getIsPublic() == null) {
+            vo.setIsPublic(false);
         }
         
         ExamSchedule examSchedule = BeanMapper.map(vo, ExamSchedule.class);
@@ -122,16 +127,17 @@ public class ExamScheduleServiceImpl implements ExamScheduleService {
     @Transactional
     public ExamScheduleVo update(Long id, ExamScheduleVo vo) {
         ExamSchedule examSchedule = examScheduleRepository.findById(id)
-            .orElseThrow(() -> new RuntimeException("考试安排不存在"));
+            .orElseThrow(() -> BizException.notFound("考试安排不存在"));
         
         // 验证考试类型
-        if (vo.getExamType() != null && !isValidExamType(vo.getExamType())) {
-            throw new RuntimeException("考试类型无效，必须是：月考、期中、期末");
+        if (vo.getExamType() != null && normalizeExamType(vo.getExamType()) == null) {
+            throw BizException.unprocessable("考试类型必须是月考、期中、期末（或 MONTHLY、MIDTERM、FINAL）");
         }
-        
-        // 验证年级格式
+        if (vo.getExamType() != null) {
+            vo.setExamType(normalizeExamType(vo.getExamType()));
+        }
         if (vo.getTargetGrade() != null && !isValidGrade(vo.getTargetGrade())) {
-            throw new RuntimeException("年级格式无效，必须是：小学1-6年级、初中1-3年级、高中1-3年级");
+            throw BizException.badRequest("年级不能为空");
         }
         
         BeanMapper.copyProperties(vo, examSchedule);
@@ -145,7 +151,7 @@ public class ExamScheduleServiceImpl implements ExamScheduleService {
     @Transactional
     public void delete(Long id) {
         ExamSchedule examSchedule = examScheduleRepository.findById(id)
-            .orElseThrow(() -> new RuntimeException("考试安排不存在"));
+            .orElseThrow(() -> BizException.notFound("考试安排不存在"));
         
         // 检查是否有成绩关联
         // TODO: 可以添加检查逻辑，如果有成绩关联，不允许删除或提示
@@ -158,7 +164,7 @@ public class ExamScheduleServiceImpl implements ExamScheduleService {
     @Transactional
     public ExamScheduleVo cancel(Long id) {
         ExamSchedule examSchedule = examScheduleRepository.findById(id)
-            .orElseThrow(() -> new RuntimeException("考试安排不存在"));
+            .orElseThrow(() -> BizException.notFound("考试安排不存在"));
         
         examSchedule.setStatus(0);
         examSchedule = examScheduleRepository.save(examSchedule);
@@ -185,8 +191,20 @@ public class ExamScheduleServiceImpl implements ExamScheduleService {
     /**
      * 验证考试类型
      */
+    private String normalizeExamType(String examType) {
+        if (examType == null || examType.isBlank()) {
+            return null;
+        }
+        return switch (examType.trim().toUpperCase()) {
+            case "月考", "MONTHLY" -> "月考";
+            case "期中", "MIDTERM" -> "期中";
+            case "期末", "FINAL" -> "期末";
+            default -> null;
+        };
+    }
+
     private boolean isValidExamType(String examType) {
-        return "月考".equals(examType) || "期中".equals(examType) || "期末".equals(examType);
+        return normalizeExamType(examType) != null;
     }
     
     /**

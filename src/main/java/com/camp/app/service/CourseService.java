@@ -8,8 +8,8 @@ import java.util.List;
 public interface CourseService {
     PageResult<CourseVo> list(long page, long size, String semester, String academicYear, Long teacherId, String keyword);
     CourseVo detail(Long id);
-    void create(CourseVo vo);
-    void update(Long id, CourseVo vo);
+    CourseVo create(CourseVo vo);
+    CourseVo update(Long id, CourseVo vo);
     void delete(Long id);
     
     /**

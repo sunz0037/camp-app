@@ -11,10 +11,17 @@ import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface StudentAttendanceRecordRepository extends JpaRepository<StudentAttendanceRecord, Long> {
     List<StudentAttendanceRecord> findBySummaryId(Long summaryId);
+
+    Optional<StudentAttendanceRecord> findByStudentIdAndAttendanceDateAndCourseId(Long studentId, LocalDate attendanceDate, Long courseId);
+
+    @Query("SELECT r FROM StudentAttendanceRecord r WHERE r.studentId = :studentId AND r.attendanceDate = :attendanceDate AND r.courseId IS NULL")
+    Optional<StudentAttendanceRecord> findByStudentIdAndAttendanceDateAndCourseIdIsNull(@Param("studentId") Long studentId,
+                                                                                        @Param("attendanceDate") LocalDate attendanceDate);
 
     @Modifying
     @Query("delete from StudentAttendanceRecord r where r.attendanceDate = :attendanceDate and r.studentId in (select s.id from Student s where s.classId = :classId)")

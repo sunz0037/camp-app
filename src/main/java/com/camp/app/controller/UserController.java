@@ -48,24 +48,25 @@ public class UserController {
 
     @PostMapping
     @RequirePermission(Phase1Permissions.USER_WRITE)
-    public BaseResponse<Void> createUser(@RequestBody UserVo user) {
-        userService.create(user);
-        return BaseResponse.ok(null);
+    public BaseResponse<UserVo> createUser(@RequestBody UserVo user) {
+        return BaseResponse.ok(userService.create(user));
     }
 
     @PutMapping("/{id}")
-    public BaseResponse<Void> updateUser(@PathVariable Long id, @RequestBody UserVo user) {
-        userService.update(id, user);
-        return BaseResponse.ok(null);
+    @RequirePermission(Phase1Permissions.USER_WRITE)
+    public BaseResponse<UserVo> updateUser(@PathVariable Long id, @RequestBody UserVo user) {
+        return BaseResponse.ok(userService.update(id, user));
     }
 
     @DeleteMapping("/{id}")
+    @RequirePermission(Phase1Permissions.USER_WRITE)
     public BaseResponse<Void> deleteUser(@PathVariable Long id) {
         userService.delete(id);
         return BaseResponse.ok(null);
     }
 
     @PutMapping("/{id}/status")
+    @RequirePermission(Phase1Permissions.USER_WRITE)
     public BaseResponse<Void> updateUserStatus(@PathVariable Long id, @RequestParam Integer status) {
         userService.updateStatus(id, status);
         return BaseResponse.ok(null);

@@ -409,7 +409,7 @@ CREATE TABLE IF NOT EXISTS oa_announcement_reads (
 CREATE TABLE IF NOT EXISTS sys_audit_logs (
   id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '审计ID',
   event_type VARCHAR(32) NOT NULL COMMENT 'LOGIN_FAIL/PASSWORD_RESET/STUDENT_IMPORT/STUDENT_EXPORT/STUDENT_STATUS_CHANGE/STUDENT_PROFILE_CHANGE，须与 event_code 成对',
-  event_code TINYINT NOT NULL COMMENT '1 LOGIN_FAIL 2 PASSWORD_RESET 3 STUDENT_IMPORT 4 STUDENT_EXPORT 5 STUDENT_STATUS_CHANGE 6 STUDENT_PROFILE_CHANGE',
+  event_code TINYINT NOT NULL COMMENT '1 LOGIN_FAIL 2 PASSWORD_RESET 3 STUDENT_IMPORT 4 STUDENT_EXPORT 5 STUDENT_STATUS_CHANGE 6 STUDENT_PROFILE_CHANGE 7 USER_ACCOUNT 8 COURSE_WRITE 9 CLASS_COURSE_WRITE 10 ATTENDANCE_WRITE 11 ANNOUNCEMENT_WRITE',
   actor_user_id BIGINT NULL COMMENT '操作者。登录失败时可能为空',
   target_user_id BIGINT NULL COMMENT '被操作用户',
   target_type VARCHAR(32) NULL COMMENT '对象类型，如 USER/STUDENT',
@@ -423,7 +423,7 @@ CREATE TABLE IF NOT EXISTS sys_audit_logs (
   KEY sys_audit_logs_idx_event_code_created (event_code, created_at),
   KEY sys_audit_logs_idx_actor_user_id (actor_user_id),
   KEY sys_audit_logs_idx_target (target_type, target_id),
-  CONSTRAINT chk_sys_audit_event CHECK (event_code BETWEEN 1 AND 6),
+  CONSTRAINT chk_sys_audit_event CHECK (event_code BETWEEN 1 AND 11),
   CONSTRAINT chk_sys_audit_result CHECK (result IN (0, 1))
 ) COMMENT='审计日志。不设外键，避免用户删除后丢掉记录';
 

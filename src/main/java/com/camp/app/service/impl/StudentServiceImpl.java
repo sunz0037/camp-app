@@ -130,189 +130,220 @@ public class StudentServiceImpl implements StudentService {
 
     @Override
     @Transactional
-    public void create(StudentVo vo) {
-        // 验证学号
-        if (!StringUtils.hasText(vo.getStudentNo())) {
-            throw new RuntimeException("学号不能为空");
+    public StudentVo create(StudentVo vo) {
+        if (vo == null || !StringUtils.hasText(vo.getStudentNo())) {
+            throw BizException.badRequest("学号不能为空");
         }
-        
-        // 验证学号唯一性
-        if (studentRepository.findByStudentNo(vo.getStudentNo()).isPresent()) {
-            throw new RuntimeException("学号已存在");
+        String studentNo = vo.getStudentNo().trim();
+        if (studentNo.length() > 20) {
+            throw BizException.unprocessable("学号不能超过 20 位");
         }
-        
-        // 处理班级关联：优先使用 classId，如果没有则通过 grade 和 className 查找
-        Class classEntity = null;
-        if (vo.getClassId() != null) {
-            // 直接使用提供的 classId
-            classEntity = classRepository.findById(vo.getClassId())
-                .orElseThrow(() -> new RuntimeException("班级不存在，请先创建班级"));
-        } else if (StringUtils.hasText(vo.getGrade()) && StringUtils.hasText(vo.getClassName())) {
-            // 通过年级名称和班级名称查找
-            // 先查找年级
-            Optional<Grade> gradeOpt = gradeRepository.findAll().stream()
-                .filter(g -> vo.getGrade().equals(g.getGradeName()) || vo.getGrade().equals(g.getGradeCode()))
-                .findFirst();
-            
-            if (gradeOpt.isEmpty()) {
-                throw new RuntimeException("年级不存在，请先创建年级：" + vo.getGrade());
-            }
-            
-            Grade grade = gradeOpt.get();
-            
-            // 再查找班级
-            List<Class> classes = classRepository.findByGradeId(grade.getId());
-            Optional<Class> classOpt = classes.stream()
-                .filter(c -> vo.getClassName().equals(c.getClassName()) || vo.getClassName().equals(c.getClassCode()))
-                .findFirst();
-            
-            if (classOpt.isEmpty()) {
-                throw new RuntimeException("班级不存在，请先创建班级：" + vo.getClassName());
-            }
-            
-            classEntity = classOpt.get();
-            vo.setClassId(classEntity.getId()); // 设置 classId 以便后续使用
-        } else {
-            throw new RuntimeException("学生必须关联到已存在的班级（请提供 classId 或 grade 和 className）");
+        if (studentRepository.findByStudentNo(studentNo).isPresent()) {
+            throw BizException.conflict("学号已存在");
         }
-        
-        // 验证班级容量
-        Long currentCount = studentRepository.countByClassId(vo.getClassId());
+        if (vo.getStatus() != null && (vo.getStatus() < 0 || vo.getStatus() > 3)) {
+            throw BizException.unprocessable("学籍状态只能是 0 休学、1 在读、2 毕业、3 退学");
+        }
+        if (vo.getGender() != null && vo.getGender() != 0 && vo.getGender() != 1) {
+            throw BizException.unprocessable("性别只能是 0 或 1");
+        }
+        Class classEntity = resolveClass(vo);
+        accessService.assertClassInScope(classEntity);
+        Long currentCount = studentRepository.countByClassId(classEntity.getId());
         if (classEntity.getCapacity() != null && currentCount >= classEntity.getCapacity()) {
-            throw new RuntimeException("班级容量已满，无法添加更多学生");
+            throw BizException.conflict("班级容量已满，无法添加更多学生");
         }
-        
-        // 处理用户创建或关联
+
         Long userId = vo.getUserId();
         if (userId == null) {
-            // 如果没有提供 userId，需要创建用户
-            // 注意：这里需要前端提供用户信息（realName等），或者使用学号作为用户名
-            // 为了简化，如果前端没有提供用户信息，我们使用学号作为用户名创建用户
             UserVo userVo = new UserVo();
-            userVo.setUsername(vo.getStudentNo()); // 使用学号作为用户名
-            userVo.setRealName(vo.getRealName() != null ? vo.getRealName() : "学生" + vo.getStudentNo());
-            userVo.setUserType(1); // 学生类型
-            userVo.setStatus(1); // 默认启用
-            
-            // 创建用户（UserService 会处理密码等）
-            userService.create(userVo);
-            
-            // 获取刚创建的用户ID
-            User createdUser = userRepository.findByUsername(vo.getStudentNo())
-                .orElseThrow(() -> new RuntimeException("创建用户失败"));
-            userId = createdUser.getId();
+            userVo.setUsername(studentNo);
+            userVo.setRealName(StringUtils.hasText(vo.getRealName()) ? vo.getRealName().trim() : "学生" + studentNo);
+            userVo.setUserType(1);
+            userVo.setStatus(1);
+            userVo.setPhone(vo.getPhone());
+            userVo.setIdCard(vo.getIdCard());
+            userVo.setRoleCodes(List.of("STUDENT"));
+            userId = userService.create(userVo).getId();
         } else {
-            // 验证用户是否存在且是学生类型
-            User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("用户不存在"));
+            User user = userRepository.findById(userId).orElseThrow(() -> BizException.notFound("用户不存在"));
             if (user.getUserType() == null || user.getUserType() != 1) {
-                throw new RuntimeException("用户类型错误，必须是学生类型");
+                throw BizException.unprocessable("关联用户必须是学生类型");
+            }
+            if (studentRepository.findByUserId(userId).isPresent()) {
+                throw BizException.conflict("该用户已有学籍");
             }
         }
-        
+
         Student student = new Student();
-        BeanMapper.copyProperties(vo, student);
         student.setUserId(userId);
-        
-        // 设置关联对象
+        student.setStudentNo(studentNo);
         student.setClassEntity(classEntity);
         if (classEntity.getGrade() != null) {
             student.setGradeEntity(classEntity.getGrade());
         }
-        accessService.assertClassInScope(classEntity);
-        
-        studentRepository.save(student);
-        
-        // 更新班级学生数
-        updateClassStudentCount(vo.getClassId());
+        student.setMajor(vo.getMajor());
+        student.setDepartment(vo.getDepartment());
+        student.setEnrollmentDate(vo.getEnrollmentDate());
+        student.setGraduationDate(vo.getGraduationDate());
+        student.setDormitory(vo.getDormitory());
+        student.setAddress(vo.getAddress());
+        student.setPoliticalStatus(vo.getPoliticalStatus());
+        student.setNationality(StringUtils.hasText(vo.getNationality()) ? vo.getNationality() : "中国");
+        student.setGender(vo.getGender());
+        student.setBirthDate(vo.getBirthDate());
+        student.setStatus(vo.getStatus() == null ? 1 : vo.getStatus());
+        student.setIsDeleted(false);
+        student = studentRepository.save(student);
+        updateClassStudentCount(classEntity.getId());
+        auditLogService.record("STUDENT_PROFILE", AuthContext.userId(), "STUDENT", String.valueOf(student.getId()),
+                "create studentNo=" + studentNo + " classId=" + classEntity.getId(), true);
+        return toVo(student, false);
     }
 
     @Override
     @Transactional
-    public void update(Long id, StudentVo vo) {
-        Student student = studentRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("学生不存在: " + id));
-        Integer previousStatus = student.getStatus();
-        accessService.assertStudentVisible(id);
-        
-        // 处理班级更新：优先使用 classId，如果没有则通过 grade 和 className 查找
-        Class newClass = null;
-        Long newClassId = vo.getClassId();
-        
-        if (newClassId == null && StringUtils.hasText(vo.getGrade()) && StringUtils.hasText(vo.getClassName())) {
-            // 通过年级名称和班级名称查找
-            Optional<Grade> gradeOpt = gradeRepository.findAll().stream()
-                .filter(g -> vo.getGrade().equals(g.getGradeName()) || vo.getGrade().equals(g.getGradeCode()))
-                .findFirst();
-            
-            if (gradeOpt.isPresent()) {
-                Grade grade = gradeOpt.get();
-                List<Class> classes = classRepository.findByGradeId(grade.getId());
-                Optional<Class> classOpt = classes.stream()
-                    .filter(c -> vo.getClassName().equals(c.getClassName()) || vo.getClassName().equals(c.getClassCode()))
-                    .findFirst();
-                
-                if (classOpt.isPresent()) {
-                    newClass = classOpt.get();
-                    newClassId = newClass.getId();
-                    vo.setClassId(newClassId);
-                }
-            }
-        } else if (newClassId != null) {
-            newClass = classRepository.findById(newClassId)
-                .orElseThrow(() -> new RuntimeException("新班级不存在"));
+    public StudentVo update(Long id, StudentVo vo) {
+        Student student = studentRepository.findById(id).orElseThrow(() -> BizException.notFound("学生不存在"));
+        if (Boolean.TRUE.equals(student.getIsDeleted())) {
+            throw BizException.notFound("学生不存在");
         }
-        
-        // 如果更新了班级，需要验证
-        if (newClassId != null && !newClassId.equals(student.getClassId())) {
-            if (newClass == null) {
-                newClass = classRepository.findById(newClassId)
-                    .orElseThrow(() -> new RuntimeException("新班级不存在"));
+        accessService.assertStudentVisible(id);
+        if (vo == null) {
+            throw BizException.badRequest("请求体不能为空");
+        }
+        Integer previousStatus = student.getStatus();
+        Long previousClassId = student.getClassId();
+        if (StringUtils.hasText(vo.getStudentNo()) && !vo.getStudentNo().trim().equals(student.getStudentNo())) {
+            if (studentRepository.findByStudentNo(vo.getStudentNo().trim()).isPresent()) {
+                throw BizException.conflict("学号已存在");
             }
-            
-            // 验证新班级容量（排除当前学生）
-            Long currentCount = studentRepository.countByClassId(newClassId);
+            student.setStudentNo(vo.getStudentNo().trim());
+        }
+        if (vo.getStatus() != null) {
+            if (vo.getStatus() < 0 || vo.getStatus() > 3) {
+                throw BizException.unprocessable("学籍状态只能是 0 休学、1 在读、2 毕业、3 退学");
+            }
+            student.setStatus(vo.getStatus());
+        }
+        if (vo.getGender() != null) {
+            if (vo.getGender() != 0 && vo.getGender() != 1) {
+                throw BizException.unprocessable("性别只能是 0 或 1");
+            }
+            student.setGender(vo.getGender());
+        }
+        Class newClass = resolveClassIfPresent(vo);
+        if (newClass != null && (previousClassId == null || !newClass.getId().equals(previousClassId))) {
+            accessService.assertClassInScope(newClass);
+            Long currentCount = studentRepository.countByClassId(newClass.getId());
             if (newClass.getCapacity() != null && currentCount >= newClass.getCapacity()) {
-                throw new RuntimeException("目标班级容量已满，无法转移学生");
+                throw BizException.conflict("目标班级容量已满，无法转移学生");
             }
-            
-            // 更新关联对象
             student.setClassEntity(newClass);
             if (newClass.getGrade() != null) {
                 student.setGradeEntity(newClass.getGrade());
             }
-            
-            // 更新旧班级和新班级的学生数
-            if (student.getClassId() != null) {
-                updateClassStudentCount(student.getClassId());
-            }
-            updateClassStudentCount(newClassId);
         }
-        
-        BeanMapper.copyProperties(vo, student);
-        student.setId(id);
+        if (vo.getMajor() != null) {
+            student.setMajor(vo.getMajor());
+        }
+        if (vo.getDepartment() != null) {
+            student.setDepartment(vo.getDepartment());
+        }
+        if (vo.getEnrollmentDate() != null) {
+            student.setEnrollmentDate(vo.getEnrollmentDate());
+        }
+        if (vo.getGraduationDate() != null) {
+            student.setGraduationDate(vo.getGraduationDate());
+        }
+        if (vo.getDormitory() != null) {
+            student.setDormitory(vo.getDormitory());
+        }
+        if (vo.getAddress() != null) {
+            student.setAddress(vo.getAddress());
+        }
+        if (vo.getPoliticalStatus() != null) {
+            student.setPoliticalStatus(vo.getPoliticalStatus());
+        }
+        if (vo.getNationality() != null) {
+            student.setNationality(vo.getNationality());
+        }
+        if (vo.getBirthDate() != null) {
+            student.setBirthDate(vo.getBirthDate());
+        }
+        if (student.getUserId() != null && (StringUtils.hasText(vo.getRealName()) || StringUtils.hasText(vo.getPhone()) || StringUtils.hasText(vo.getIdCard()))) {
+            userRepository.findById(student.getUserId()).ifPresent(user -> {
+                if (StringUtils.hasText(vo.getRealName())) {
+                    user.setRealName(vo.getRealName().trim());
+                }
+                if (StringUtils.hasText(vo.getPhone())) {
+                    user.setPhone(vo.getPhone().trim());
+                }
+                if (StringUtils.hasText(vo.getIdCard())) {
+                    user.setIdCard(vo.getIdCard().trim());
+                }
+                userRepository.save(user);
+            });
+        }
         studentRepository.save(student);
+        if (previousClassId != null) {
+            updateClassStudentCount(previousClassId);
+        }
+        if (student.getClassId() != null) {
+            updateClassStudentCount(student.getClassId());
+        }
         if (vo.getStatus() != null && !vo.getStatus().equals(previousStatus)) {
             auditLogService.record("STUDENT_STATUS", AuthContext.userId(), "STUDENT", String.valueOf(id),
                     "status " + previousStatus + " -> " + vo.getStatus(), true);
+        } else {
+            auditLogService.record("STUDENT_PROFILE", AuthContext.userId(), "STUDENT", String.valueOf(id),
+                    "update classId=" + student.getClassId(), true);
         }
+        return toVo(student, false);
     }
 
     @Override
     @Transactional
     public void delete(Long id) {
-        Student student = studentRepository.findById(id)
-            .orElseThrow(() -> new RuntimeException("学生不存在: " + id));
-        
+        Student student = studentRepository.findById(id).orElseThrow(() -> BizException.notFound("学生不存在"));
+        if (Boolean.TRUE.equals(student.getIsDeleted())) {
+            throw BizException.notFound("学生不存在");
+        }
         accessService.assertStudentVisible(id);
         Long classId = student.getClassId();
         student.setIsDeleted(true);
         studentRepository.save(student);
-        
-        // 更新班级学生数
         if (classId != null) {
             updateClassStudentCount(classId);
         }
+        auditLogService.record("STUDENT_PROFILE", AuthContext.userId(), "STUDENT", String.valueOf(id), "soft-delete", true);
+    }
+
+    private Class resolveClass(StudentVo vo) {
+        Class classEntity = resolveClassIfPresent(vo);
+        if (classEntity == null) {
+            throw BizException.badRequest("学生必须关联到已存在的班级（请提供 classId 或 grade 和 className）");
+        }
+        return classEntity;
+    }
+
+    private Class resolveClassIfPresent(StudentVo vo) {
+        if (vo.getClassId() != null) {
+            return classRepository.findById(vo.getClassId()).orElseThrow(() -> BizException.notFound("班级不存在，请先创建班级"));
+        }
+        if (!StringUtils.hasText(vo.getGrade()) || !StringUtils.hasText(vo.getClassName())) {
+            return null;
+        }
+        Optional<Grade> gradeOpt = gradeRepository.findAll().stream()
+                .filter(g -> vo.getGrade().equals(g.getGradeName()) || vo.getGrade().equals(g.getGradeCode()))
+                .findFirst();
+        if (gradeOpt.isEmpty()) {
+            throw BizException.notFound("年级不存在，请先创建年级：" + vo.getGrade());
+        }
+        return classRepository.findByGradeId(gradeOpt.get().getId()).stream()
+                .filter(c -> vo.getClassName().equals(c.getClassName()) || vo.getClassName().equals(c.getClassCode()))
+                .findFirst()
+                .orElseThrow(() -> BizException.notFound("班级不存在，请先创建班级：" + vo.getClassName()));
     }
     
     /**

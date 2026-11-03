@@ -5,6 +5,8 @@
 > **开发态鉴权**（`profile=h2`、`profile=dev`，或 `camp.dev-auth.enabled=true`）：
 > `Authorization: Bearer dev-ADMIN|dev-ACADEMIC|dev-TEACHER|dev-STUDENT`，或请求头 `X-Dev-Role` 取同样的角色名。
 > 可选 `X-Dev-User-Id`、`X-Dev-Class-Ids`、`X-Dev-Grade-Ids`（逗号分隔）。业务接口按该身份做权限和数据范围。完整密码登录后置。
+>
+> 二期写路径、文件和考试见 `api-contract-v1-phase2.md`。下面第 10 节的「不实现」里，考试已由该文档接上；访客、短信、待办仍未做。
 
 
 - 版本：v1.0.1

@@ -19,6 +19,7 @@ import com.camp.app.repository.UserRepository;
 import com.camp.app.security.AuthContext;
 import com.camp.app.service.AccessService;
 import com.camp.app.service.AttendanceService;
+import com.camp.app.service.AuditLogService;
 import com.camp.app.util.BeanMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -46,13 +47,16 @@ public class AttendanceServiceImpl implements AttendanceService {
     private final StudentRepository studentRepository;
     private final UserRepository userRepository;
     private final AccessService accessService;
+    private final AuditLogService auditLogService;
 
     @Override
     public PageResult<ClassAttendanceDailyVo> listClassDaily(long page, long size, String grade, String className, String attendanceDate) {
         Pageable pageable = PageRequest.of((int) (page - 1), (int) size);
         LocalDate date = attendanceDate != null ? LocalDate.parse(attendanceDate) : null;
         Page<ClassAttendanceDaily> dailyPage = classAttendanceDailyRepository.findByFilters(grade, className, date, pageable);
-        List<ClassAttendanceDailyVo> voList = dailyPage.getContent().stream().map(this::toSummaryVo).toList();
+        List<ClassAttendanceDailyVo> voList = dailyPage.getContent().stream()
+                .filter(row -> inScope(accessService.current(), row.getClassId()))
+                .map(this::toSummaryVo).toList();
         return PageResult.<ClassAttendanceDailyVo>builder()
                 .page(page).size(size).total(dailyPage.getTotalElements()).records(voList).build();
     }
@@ -60,14 +64,38 @@ public class AttendanceServiceImpl implements AttendanceService {
     @Override
     @Transactional
     public void upsertClassDaily(ClassAttendanceDailyVo vo) {
+        if (vo == null || vo.getAttendanceDate() == null) {
+            throw BizException.badRequest("attendanceDate 不能为空");
+        }
+        if (vo.getClassId() == null && vo.getClassName() != null) {
+            classRepository.findAll().stream()
+                    .filter(row -> vo.getClassName().equals(row.getClassName()))
+                    .findFirst()
+                    .ifPresent(row -> vo.setClassId(row.getId()));
+        }
+        if (vo.getClassId() == null) {
+            throw BizException.badRequest("classId 不能为空");
+        }
+        com.camp.app.entity.Class schoolClass = classRepository.findById(vo.getClassId())
+                .orElseThrow(() -> BizException.notFound("班级不存在"));
+        accessService.assertClassInScope(schoolClass);
         ClassAttendanceDaily daily = classAttendanceDailyRepository
                 .findByAttendanceDateAndGradeAndClassName(vo.getAttendanceDate(), vo.getGrade(), vo.getClassName())
                 .orElse(new ClassAttendanceDaily());
-        BeanMapper.copyProperties(vo, daily);
-        if (vo.getPresentCount() != null) {
-            daily.setPresentCount(vo.getPresentCount());
-        }
+        daily.setClassId(schoolClass.getId());
+        daily.setAttendanceDate(vo.getAttendanceDate());
+        daily.setGrade(schoolClass.getGrade() == null ? vo.getGrade() : schoolClass.getGrade().getGradeName());
+        daily.setClassName(schoolClass.getClassName());
+        daily.setExpectedCount(vo.getExpectedCount() == null ? 0 : vo.getExpectedCount());
+        daily.setPresentCount(vo.getPresentCount() == null ? 0 : vo.getPresentCount());
+        daily.setAbsentCount(vo.getAbsentCount() == null ? 0 : vo.getAbsentCount());
+        daily.setLateCount(vo.getLateCount() == null ? 0 : vo.getLateCount());
+        daily.setLeaveCount(vo.getLeaveCount() == null ? 0 : vo.getLeaveCount());
+        daily.setEarlyLeaveCount(vo.getEarlyLeaveCount() == null ? 0 : vo.getEarlyLeaveCount());
+        daily.setRemark(vo.getRemark());
+        daily.setRecorderId(AuthContext.userId());
         classAttendanceDailyRepository.save(daily);
+        auditLogService.recordEvent(10, AuthContext.userId(), null, "ATTENDANCE", String.valueOf(daily.getId()), "upsert-summary");
     }
 
     @Override
@@ -125,7 +153,9 @@ public class AttendanceServiceImpl implements AttendanceService {
         LocalDate date = attendanceDate != null ? LocalDate.parse(attendanceDate) : null;
         Page<StudentAttendanceRecord> recordPage = studentAttendanceRecordRepository.findByFilters(
                 grade, className, date, AttendanceCalculator.legacyStatusToCode(status), pageable);
-        List<StudentAttendanceRecordVo> voList = recordPage.getContent().stream().map(this::toRecordVo).toList();
+        List<StudentAttendanceRecordVo> voList = recordPage.getContent().stream()
+                .filter(row -> inScope(accessService.current(), classIdOfStudent(row.getStudentId())))
+                .map(this::toRecordVo).toList();
         return PageResult.<StudentAttendanceRecordVo>builder()
                 .page(page).size(size).total(recordPage.getTotalElements()).records(voList).build();
     }
@@ -157,31 +187,52 @@ public class AttendanceServiceImpl implements AttendanceService {
 
     @Override
     @Transactional
-    public void createStudentAttendance(StudentAttendanceRecordVo vo) {
+    public StudentAttendanceRecordVo createStudentAttendance(StudentAttendanceRecordVo vo) {
+        if (vo == null || vo.getStudentId() == null || vo.getAttendanceDate() == null) {
+            throw BizException.badRequest("studentId 与 attendanceDate 不能为空");
+        }
         applyRecordDefaults(vo);
+        Student student = studentRepository.findById(vo.getStudentId()).orElseThrow(() -> BizException.notFound("学生不存在"));
+        accessService.assertStudentVisible(student.getId());
+        if (Boolean.TRUE.equals(student.getIsDeleted())) {
+            throw BizException.notFound("学生不存在");
+        }
+        boolean duplicate = vo.getCourseId() == null
+                ? studentAttendanceRecordRepository.findByStudentIdAndAttendanceDateAndCourseIdIsNull(vo.getStudentId(), vo.getAttendanceDate()).isPresent()
+                : studentAttendanceRecordRepository.findByStudentIdAndAttendanceDateAndCourseId(vo.getStudentId(), vo.getAttendanceDate(), vo.getCourseId()).isPresent();
+        if (duplicate) {
+            throw BizException.conflict("该学生当天同一课程已有异常记录");
+        }
         StudentAttendanceRecord record = new StudentAttendanceRecord();
         record.setStudentId(vo.getStudentId());
         record.setSummaryId(vo.getSummaryId());
         record.setCourseId(vo.getCourseId());
         record.setAttendanceDate(vo.getAttendanceDate());
-        record.setGrade(vo.getGrade());
-        record.setClassName(vo.getClassName());
+        record.setGrade(student.getGrade());
+        record.setClassName(student.getClassName());
         record.setExceptionType(AttendanceCalculator.codeOf(vo.getExceptionType()));
         record.setConfirmStatus(AttendanceCalculator.confirmCode(vo.getConfirmStatus()));
         record.setReasonType(vo.getReasonType());
         record.setReasonDetail(vo.getReasonDetail());
         record.setRecorderId(AuthContext.userId());
-        studentAttendanceRecordRepository.save(record);
+        record = studentAttendanceRecordRepository.save(record);
+        auditLogService.recordEvent(10, AuthContext.userId(), null, "ATTENDANCE_RECORD", String.valueOf(record.getId()),
+                "create studentId=" + vo.getStudentId() + " type=" + vo.getExceptionType());
+        return toRecordVo(record);
     }
 
     @Override
     @Transactional
-    public void updateStudentAttendance(Long id, StudentAttendanceRecordVo vo) {
+    public StudentAttendanceRecordVo updateStudentAttendance(Long id, StudentAttendanceRecordVo vo) {
         StudentAttendanceRecord record = studentAttendanceRecordRepository.findById(id)
                 .orElseThrow(() -> BizException.notFound("考勤明细不存在"));
+        accessService.assertStudentVisible(record.getStudentId());
+        if (vo == null) {
+            throw BizException.badRequest("请求体不能为空");
+        }
         applyRecordDefaults(vo);
-        record.setId(id);
-        if (vo.getStudentId() != null) {
+        if (vo.getStudentId() != null && !vo.getStudentId().equals(record.getStudentId())) {
+            accessService.assertStudentVisible(vo.getStudentId());
             record.setStudentId(vo.getStudentId());
         }
         if (vo.getCourseId() != null) {
@@ -195,16 +246,21 @@ public class AttendanceServiceImpl implements AttendanceService {
         if (vo.getReasonDetail() != null) {
             record.setReasonDetail(vo.getReasonDetail());
         }
+        record.setRecorderId(record.getRecorderId() == null ? AuthContext.userId() : record.getRecorderId());
         studentAttendanceRecordRepository.save(record);
+        auditLogService.recordEvent(10, AuthContext.userId(), null, "ATTENDANCE_RECORD", String.valueOf(id),
+                "update type=" + vo.getExceptionType() + " status=" + vo.getConfirmStatus());
+        return toRecordVo(record);
     }
 
     @Override
     @Transactional
     public void deleteStudentAttendance(Long id) {
-        if (!studentAttendanceRecordRepository.existsById(id)) {
-            throw BizException.notFound("考勤明细不存在");
-        }
-        studentAttendanceRecordRepository.deleteById(id);
+        StudentAttendanceRecord record = studentAttendanceRecordRepository.findById(id)
+                .orElseThrow(() -> BizException.notFound("考勤明细不存在"));
+        accessService.assertStudentVisible(record.getStudentId());
+        studentAttendanceRecordRepository.delete(record);
+        auditLogService.recordEvent(10, AuthContext.userId(), null, "ATTENDANCE_RECORD", String.valueOf(id), "delete");
     }
 
     private ClassAttendanceDailyVo writeSummary(ClassAttendanceDaily existing, AttendanceSummaryRequest request) {
@@ -259,6 +315,8 @@ public class AttendanceServiceImpl implements AttendanceService {
         daily.setRemark(request.getRemark());
         daily.setRecorderId(AuthContext.userId());
         daily = classAttendanceDailyRepository.save(daily);
+        auditLogService.recordEvent(10, AuthContext.userId(), null, "ATTENDANCE", String.valueOf(daily.getId()),
+                "summary classId=" + schoolClass.getId() + " date=" + request.getAttendanceDate());
 
         studentAttendanceRecordRepository.deleteByClassIdAndAttendanceDate(schoolClass.getId(), request.getAttendanceDate());
         studentAttendanceRecordRepository.deleteBySummaryId(daily.getId());
@@ -293,6 +351,12 @@ public class AttendanceServiceImpl implements AttendanceService {
         }
         if (vo.getConfirmStatus() == null) {
             vo.setConfirmStatus("CONFIRMED");
+        }
+        if (!EXCEPTION_TYPES.contains(vo.getExceptionType())) {
+            throw BizException.unprocessable("exceptionType 必须是 LATE、EARLY_LEAVE、PERSONAL_LEAVE、SICK_LEAVE 或 ABSENT");
+        }
+        if (!CONFIRM_STATUSES.contains(vo.getConfirmStatus())) {
+            throw BizException.unprocessable("confirmStatus 必须是 PENDING、CONFIRMED 或 CLEARED");
         }
     }
 

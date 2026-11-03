@@ -13,9 +13,12 @@ import com.camp.app.repository.AnnouncementScopeRepository;
 import com.camp.app.repository.UserRepository;
 import com.camp.app.security.AuthContext;
 import com.camp.app.security.AuthPrincipal;
+import com.camp.app.security.Phase1Permissions;
 import com.camp.app.security.Phase1Roles;
 import com.camp.app.service.AccessService;
 import com.camp.app.service.AnnouncementService;
+import com.camp.app.service.AuditLogService;
+import com.camp.app.service.FileStorageService;
 import com.camp.app.util.BeanMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
@@ -38,6 +41,8 @@ public class AnnouncementServiceImpl implements AnnouncementService {
     private final AnnouncementScopeRepository announcementScopeRepository;
     private final AccessService accessService;
     private final UserRepository userRepository;
+    private final AuditLogService auditLogService;
+    private final FileStorageService fileStorageService;
 
     @Override
     @Transactional(readOnly = true)
@@ -106,28 +111,44 @@ public class AnnouncementServiceImpl implements AnnouncementService {
 
     @Override
     @Transactional
-    public void create(AnnouncementVo vo) {
-        if (vo.getTitle() == null || vo.getContent() == null) {
+    public AnnouncementVo create(AnnouncementVo vo) {
+        if (vo == null || vo.getTitle() == null || vo.getTitle().isBlank() || vo.getContent() == null || vo.getContent().isBlank()) {
             throw BizException.badRequest("标题和内容不能为空");
         }
+        if (vo.getTitle().trim().length() > 200) {
+            throw BizException.unprocessable("标题不能超过 200 字");
+        }
         assertCanPublish(vo);
-        Announcement announcement = BeanMapper.map(vo, Announcement.class);
-        if (announcement.getPublisherId() == null) {
-            announcement.setPublisherId(AuthContext.userId());
+        if (AuthContext.userId() == null) {
+            throw BizException.unauthorized("未登录");
         }
-        if (announcement.getStatus() == null) {
-            announcement.setStatus(1);
-        }
-        announcementRepository.save(announcement);
+        fileStorageService.assertReferenced(vo.getAttachmentUrl());
+        Announcement announcement = new Announcement();
+        announcement.setTitle(vo.getTitle().trim());
+        announcement.setContent(vo.getContent().trim());
+        announcement.setCategory(vo.getCategory());
+        announcement.setPublisherId(AuthContext.userId());
+        announcement.setExpireTime(vo.getExpireTime());
+        announcement.setIsUrgent(vo.getIsUrgent() == null ? 0 : flag(vo.getIsUrgent(), "isUrgent"));
+        announcement.setIsTop(canTop() ? flag(vo.getIsTop() == null ? 0 : vo.getIsTop(), "isTop") : 0);
+        announcement.setAttachmentUrl(blankToNull(vo.getAttachmentUrl()));
+        announcement.setStatus(vo.getStatus() == null ? 1 : announcementStatus(vo.getStatus()));
+        announcement.setViewCount(0);
+        announcement = announcementRepository.save(announcement);
         replaceScopes(announcement.getId(), vo.getScopeType() == null ? "ALL" : vo.getScopeType(), vo.getScopeIds());
+        auditLogService.recordEvent(11, AuthContext.userId(), null, "ANNOUNCEMENT", String.valueOf(announcement.getId()), "create");
+        return toVo(announcement, true);
     }
 
     @Override
     @Transactional
-    public void update(Long id, AnnouncementVo vo) {
+    public AnnouncementVo update(Long id, AnnouncementVo vo) {
         Announcement announcement = announcementRepository.findById(id)
                 .orElseThrow(() -> BizException.notFound("公告不存在"));
         assertCanEdit(announcement);
+        if (vo == null) {
+            throw BizException.badRequest("请求体不能为空");
+        }
         if (vo.getScopeType() != null || vo.getScopeIds() != null) {
             ScopeView current = scopeView(announcement.getId());
             AnnouncementVo check = new AnnouncementVo();
@@ -136,28 +157,38 @@ public class AnnouncementServiceImpl implements AnnouncementService {
             assertCanPublish(check);
         }
         if (vo.getTitle() != null) {
-            announcement.setTitle(vo.getTitle());
+            if (vo.getTitle().isBlank() || vo.getTitle().trim().length() > 200) {
+                throw BizException.unprocessable("标题不能为空且不超过 200 字");
+            }
+            announcement.setTitle(vo.getTitle().trim());
         }
         if (vo.getContent() != null) {
+            if (vo.getContent().isBlank()) {
+                throw BizException.unprocessable("正文不能为空");
+            }
             announcement.setContent(vo.getContent());
         }
         if (vo.getCategory() != null) {
             announcement.setCategory(vo.getCategory());
         }
         if (vo.getIsTop() != null) {
-            announcement.setIsTop(vo.getIsTop());
+            if (!canTop()) {
+                throw BizException.forbidden("只有教务或管理员可以置顶");
+            }
+            announcement.setIsTop(flag(vo.getIsTop(), "isTop"));
         }
         if (vo.getIsUrgent() != null) {
-            announcement.setIsUrgent(vo.getIsUrgent());
+            announcement.setIsUrgent(flag(vo.getIsUrgent(), "isUrgent"));
         }
         if (vo.getExpireTime() != null) {
             announcement.setExpireTime(vo.getExpireTime());
         }
         if (vo.getStatus() != null) {
-            announcement.setStatus(vo.getStatus());
+            announcement.setStatus(announcementStatus(vo.getStatus()));
         }
         if (vo.getAttachmentUrl() != null) {
-            announcement.setAttachmentUrl(vo.getAttachmentUrl());
+            fileStorageService.assertReferenced(vo.getAttachmentUrl());
+            announcement.setAttachmentUrl(blankToNull(vo.getAttachmentUrl()));
         }
         if (vo.getScopeType() != null || vo.getScopeIds() != null) {
             ScopeView current = scopeView(announcement.getId());
@@ -167,6 +198,8 @@ public class AnnouncementServiceImpl implements AnnouncementService {
         }
         announcement.setUpdatedAt(LocalDateTime.now());
         announcementRepository.save(announcement);
+        auditLogService.recordEvent(11, AuthContext.userId(), null, "ANNOUNCEMENT", String.valueOf(id), "update");
+        return toVo(announcement, true);
     }
 
     @Override
@@ -174,8 +207,9 @@ public class AnnouncementServiceImpl implements AnnouncementService {
     public void top(Long id, Integer isTop) {
         Announcement announcement = announcementRepository.findById(id)
                 .orElseThrow(() -> BizException.notFound("公告不存在"));
-        announcement.setIsTop(isTop);
+        announcement.setIsTop(flag(isTop, "isTop"));
         announcementRepository.save(announcement);
+        auditLogService.recordEvent(11, AuthContext.userId(), null, "ANNOUNCEMENT", String.valueOf(id), "top=" + isTop);
     }
 
     @Override
@@ -186,6 +220,7 @@ public class AnnouncementServiceImpl implements AnnouncementService {
         assertCanEdit(announcement);
         announcement.setStatus(2);
         announcementRepository.save(announcement);
+        auditLogService.recordEvent(11, AuthContext.userId(), null, "ANNOUNCEMENT", String.valueOf(id), "withdraw");
     }
 
     @Override
@@ -199,7 +234,39 @@ public class AnnouncementServiceImpl implements AnnouncementService {
         if (!admin && !author) {
             throw BizException.forbidden("仅管理员或作者可删除公告");
         }
-        announcementRepository.deleteById(id);
+        announcementReadRepository.deleteByAnnouncementId(id);
+        announcementScopeRepository.deleteByAnnouncementId(id);
+        announcementRepository.delete(announcement);
+        auditLogService.recordEvent(11, AuthContext.userId(), null, "ANNOUNCEMENT", String.valueOf(id), "delete");
+    }
+
+    private boolean canTop() {
+        AuthPrincipal principal = AuthContext.get();
+        return principal != null && Phase1Permissions.allows(principal.permissions(), Phase1Permissions.ANNOUNCEMENT_TOP);
+    }
+
+    private int flag(Integer value, String field) {
+        if (value == null) {
+            return 0;
+        }
+        if (value != 0 && value != 1) {
+            throw BizException.unprocessable(field + " 只能是 0 或 1");
+        }
+        return value;
+    }
+
+    private int announcementStatus(Integer status) {
+        if (status == null || status < 0 || status > 2) {
+            throw BizException.unprocessable("公告状态只能是 0 草稿、1 已发布、2 已撤回");
+        }
+        return status;
+    }
+
+    private String blankToNull(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
     }
 
     private void assertCanPublish(AnnouncementVo vo) {

@@ -23,6 +23,8 @@ public interface StudentRepository extends JpaRepository<Student, Long>, JpaSpec
      * 根据班级ID查找学生列表
      */
     List<Student> findByClassId(Long classId);
+
+    List<Student> findByClassIdIn(java.util.Collection<Long> classIds);
     
     /**
      * 根据年级ID查找学生列表

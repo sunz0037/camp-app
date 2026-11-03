@@ -8,6 +8,8 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.Optional;
+
 @Repository
 public interface ExamScoreRepository extends JpaRepository<ExamScore, Long> {
     @Query("SELECT e FROM ExamScore e WHERE " +
@@ -29,5 +31,8 @@ public interface ExamScoreRepository extends JpaRepository<ExamScore, Long> {
      * 根据考试安排ID查询成绩
      */
     Page<ExamScore> findByExamScheduleId(Long examScheduleId, Pageable pageable);
+
+    Optional<ExamScore> findByStudentIdAndCourseIdAndExamTypeAndSemesterAndAcademicYear(
+            Long studentId, Long courseId, String examType, String semester, String academicYear);
 }
 

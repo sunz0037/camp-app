@@ -22,6 +22,7 @@ import com.camp.app.security.AuthContext;
 import com.camp.app.security.AuthPrincipal;
 import com.camp.app.security.Phase1Roles;
 import com.camp.app.service.AccessService;
+import com.camp.app.service.AuditLogService;
 import com.camp.app.service.ClassCourseService;
 import com.camp.app.util.BeanMapper;
 import lombok.RequiredArgsConstructor;
@@ -46,9 +47,12 @@ public class ClassCourseServiceImpl implements ClassCourseService {
     private final ClassCourseSessionRepository classCourseSessionRepository;
     private final StudentRepository studentRepository;
     private final AccessService accessService;
+    private final AuditLogService auditLogService;
     
     @Override
     public List<ClassCourseVo> listByClassId(Long classId) {
+        Class classEntity = classRepository.findById(classId).orElseThrow(() -> BizException.notFound("班级不存在"));
+        accessService.assertClassInScope(classEntity);
         return classCourseRepository.findByClassEntityId(classId).stream()
             .map(this::toVo)
             .collect(Collectors.toList());
@@ -56,6 +60,8 @@ public class ClassCourseServiceImpl implements ClassCourseService {
     
     @Override
     public List<ClassCourseVo> listEnabledByClassId(Long classId) {
+        Class classEntity = classRepository.findById(classId).orElseThrow(() -> BizException.notFound("班级不存在"));
+        accessService.assertClassInScope(classEntity);
         return classCourseRepository.findByClassEntityIdAndStatus(classId, 1).stream()
             .map(this::toVo)
             .collect(Collectors.toList());
@@ -64,161 +70,147 @@ public class ClassCourseServiceImpl implements ClassCourseService {
     @Override
     public ClassCourseVo detail(Long id) {
         ClassCourse classCourse = classCourseRepository.findById(id)
-            .orElseThrow(() -> new RuntimeException("班级授课科目关联不存在"));
+            .orElseThrow(() -> BizException.notFound("班级授课不存在"));
+        accessService.assertClassInScope(classCourse.getClassEntity());
         return toVo(classCourse);
     }
     
     @Override
     @Transactional
-    public void create(ClassCourseVo classCourseVo) {
-        // 验证维护顺序：必须存在班级（优先级2）
-        if (classCourseVo.getClassId() == null) {
-            throw new RuntimeException("班级ID不能为空，请先创建班级");
+    public ClassCourseVo create(ClassCourseVo classCourseVo) {
+        if (classCourseVo == null || classCourseVo.getClassId() == null) {
+            throw BizException.badRequest("班级ID不能为空，请先创建班级");
         }
-        Class classEntity = classRepository.findById(classCourseVo.getClassId())
-            .orElseThrow(() -> new RuntimeException("班级不存在，请先创建班级"));
-        
-        // 验证维护顺序：必须存在科目（优先级3）
         if (classCourseVo.getCourseId() == null) {
-            throw new RuntimeException("科目ID不能为空，请先创建科目");
+            throw BizException.badRequest("科目ID不能为空，请先创建科目");
         }
+        if (classCourseVo.getAcademicYear() == null || classCourseVo.getAcademicYear().isBlank()) {
+            throw BizException.badRequest("学年不能为空");
+        }
+        Integer semester = requiredSemester(classCourseVo.getSemester());
+        Class classEntity = classRepository.findById(classCourseVo.getClassId())
+            .orElseThrow(() -> BizException.notFound("班级不存在，请先创建班级"));
+        accessService.assertClassInScope(classEntity);
         Course course = courseRepository.findById(classCourseVo.getCourseId())
-            .orElseThrow(() -> new RuntimeException("科目不存在，请先创建科目"));
-        
-        // 检查是否已存在相同的关联（同一班级、同一科目、同一学期、同一学年）
+            .orElseThrow(() -> BizException.notFound("科目不存在，请先创建科目"));
         classCourseRepository.findByClassAndCourseAndSemesterAndYear(
-            classCourseVo.getClassId(),
-            classCourseVo.getCourseId(),
-            semesterOf(classCourseVo.getSemester()),
-            classCourseVo.getAcademicYear()
+            classCourseVo.getClassId(), classCourseVo.getCourseId(), semester, classCourseVo.getAcademicYear().trim()
         ).ifPresent(existing -> {
-            throw new RuntimeException("该班级已存在相同的授课科目关联");
+            throw BizException.conflict("该班级本学期已存在相同课程");
         });
-        
+        assertSessions(classCourseVo.getSessions());
+        assertNoOverlap(classEntity.getId(), classCourseVo.getAcademicYear().trim(), semester, null, classCourseVo.getSessions());
+
         ClassCourse classCourse = new ClassCourse();
-        BeanMapper.copyProperties(classCourseVo, classCourse);
         classCourse.setClassEntity(classEntity);
         classCourse.setCourse(course);
-        
-        // 设置授课教师（如果提供）- 优先级4：授课科目对应授课教师
-        if (classCourseVo.getTeacherId() != null) {
-            User teacher = userRepository.findById(classCourseVo.getTeacherId())
-                .orElseThrow(() -> new RuntimeException("授课教师不存在"));
-            
-            // 验证用户类型是否为教师（user_type = 2）
-            if (teacher.getUserType() == null || teacher.getUserType() != 2) {
-                throw new RuntimeException("指定的用户不是教师（user_type应为2）");
-            }
-            
-            classCourse.setTeacher(teacher);
+        classCourse.setAcademicYear(classCourseVo.getAcademicYear().trim());
+        classCourse.setSemester(semester);
+        classCourse.setTeacher(resolveTeacher(classCourseVo.getTeacherId()));
+        classCourse.setStatus(classCourseVo.getStatus() == null ? 1 : classCourseVo.getStatus());
+        if (classCourse.getStatus() != 0 && classCourse.getStatus() != 1) {
+            throw BizException.unprocessable("排课状态只能是 0 或 1");
         }
-        
-        if (classCourse.getStatus() == null) {
-            classCourse.setStatus(1);
-        }
-        
-        classCourseRepository.save(classCourse);
+        classCourse = classCourseRepository.save(classCourse);
         replaceSessions(classCourse.getId(), classCourseVo.getSessions());
+        auditLogService.recordEvent(9, AuthContext.userId(), null, "CLASS_COURSE", String.valueOf(classCourse.getId()),
+                "create classId=" + classEntity.getId() + " courseId=" + course.getId());
+        return toVo(classCourse);
     }
     
     @Override
     @Transactional
-    public void batchCreate(Long classId, List<Long> courseIds) {
-        // 验证班级是否存在
-        Class classEntity = classRepository.findById(classId)
-            .orElseThrow(() -> new RuntimeException("班级不存在"));
-        
+    public void batchCreate(Long classId, List<Long> courseIds, String academicYear, Integer semester) {
+        if (classId == null || courseIds == null || courseIds.isEmpty()) {
+            throw BizException.badRequest("班级和课程不能为空");
+        }
+        if (academicYear == null || academicYear.isBlank() || semester == null || (semester != 1 && semester != 2)) {
+            throw BizException.badRequest("批量排课需要 academicYear，以及 semester=1 或 2");
+        }
+        Class classEntity = classRepository.findById(classId).orElseThrow(() -> BizException.notFound("班级不存在"));
+        accessService.assertClassInScope(classEntity);
         for (Long courseId : courseIds) {
-            // 检查是否已存在
-            if (classCourseRepository.findByClassEntityIdAndCourseId(classId, courseId).isPresent()) {
-                continue; // 已存在则跳过
+            if (classCourseRepository.findByClassAndCourseAndSemesterAndYear(classId, courseId, semester, academicYear.trim()).isPresent()) {
+                continue;
             }
-            
-            Course course = courseRepository.findById(courseId)
-                .orElseThrow(() -> new RuntimeException("科目不存在：ID=" + courseId));
-            
+            Course course = courseRepository.findById(courseId).orElseThrow(() -> BizException.notFound("科目不存在：ID=" + courseId));
             ClassCourse classCourse = new ClassCourse();
             classCourse.setClassEntity(classEntity);
             classCourse.setCourse(course);
+            classCourse.setAcademicYear(academicYear.trim());
+            classCourse.setSemester(semester);
             classCourse.setStatus(1);
-            
             classCourseRepository.save(classCourse);
         }
+        auditLogService.recordEvent(9, AuthContext.userId(), null, "CLASS_COURSE", String.valueOf(classId), "batch-create");
     }
     
     @Override
     @Transactional
-    public void update(Long id, ClassCourseVo classCourseVo) {
+    public ClassCourseVo update(Long id, ClassCourseVo classCourseVo) {
         ClassCourse classCourse = classCourseRepository.findById(id)
-            .orElseThrow(() -> new RuntimeException("班级授课科目关联不存在"));
-        
-        // 如果修改了班级，验证班级是否存在
-        if (!classCourse.getClassEntity().getId().equals(classCourseVo.getClassId())) {
-            Class classEntity = classRepository.findById(classCourseVo.getClassId())
-                .orElseThrow(() -> new RuntimeException("班级不存在"));
-            classCourse.setClassEntity(classEntity);
+            .orElseThrow(() -> BizException.notFound("班级授课不存在"));
+        accessService.assertClassInScope(classCourse.getClassEntity());
+        if (classCourseVo == null) {
+            throw BizException.badRequest("请求体不能为空");
         }
-        
-        // 如果修改了科目，验证科目是否存在
-        if (!classCourse.getCourse().getId().equals(classCourseVo.getCourseId())) {
-            Course course = courseRepository.findById(classCourseVo.getCourseId())
-                .orElseThrow(() -> new RuntimeException("科目不存在"));
-            classCourse.setCourse(course);
+        Long classId = classCourseVo.getClassId() == null ? classCourse.getClassEntity().getId() : classCourseVo.getClassId();
+        Long courseId = classCourseVo.getCourseId() == null ? classCourse.getCourse().getId() : classCourseVo.getCourseId();
+        String year = classCourseVo.getAcademicYear() == null ? classCourse.getAcademicYear() : classCourseVo.getAcademicYear().trim();
+        Integer semester = classCourseVo.getSemester() == null ? classCourse.getSemester() : requiredSemester(classCourseVo.getSemester());
+        Class classEntity = classRepository.findById(classId).orElseThrow(() -> BizException.notFound("班级不存在"));
+        accessService.assertClassInScope(classEntity);
+        Course course = courseRepository.findById(courseId).orElseThrow(() -> BizException.notFound("科目不存在"));
+        classCourseRepository.findByClassAndCourseAndSemesterAndYear(classId, courseId, semester, year).ifPresent(existing -> {
+            if (!existing.getId().equals(id)) {
+                throw BizException.conflict("该班级本学期已存在相同课程");
+            }
+        });
+        if (classCourseVo.getSessions() != null) {
+            assertSessions(classCourseVo.getSessions());
+            assertNoOverlap(classId, year, semester, id, classCourseVo.getSessions());
         }
-        
-        // 检查唯一性（如果修改了关键字段）
-        if (!classCourse.getClassEntity().getId().equals(classCourseVo.getClassId()) ||
-            !classCourse.getCourse().getId().equals(classCourseVo.getCourseId()) ||
-            !equalsNullable(classCourse.getSemester(), semesterOf(classCourseVo.getSemester())) ||
-            !equalsNullable(classCourse.getAcademicYear(), classCourseVo.getAcademicYear())) {
-            
-            classCourseRepository.findByClassAndCourseAndSemesterAndYear(
-                classCourseVo.getClassId(),
-                classCourseVo.getCourseId(),
-                semesterOf(classCourseVo.getSemester()),
-                classCourseVo.getAcademicYear()
-            ).ifPresent(existing -> {
-                if (!existing.getId().equals(id)) {
-                    throw new RuntimeException("该班级已存在相同的授课科目关联");
-                }
-            });
-        }
-        
-        // 更新其他字段
-        classCourse.setSemester(semesterOf(classCourseVo.getSemester()));
-        classCourse.setAcademicYear(classCourseVo.getAcademicYear());
-        classCourse.setStatus(classCourseVo.getStatus());
-        
-        // 更新授课教师
+        classCourse.setClassEntity(classEntity);
+        classCourse.setCourse(course);
+        classCourse.setAcademicYear(year);
+        classCourse.setSemester(semester);
         if (classCourseVo.getTeacherId() != null) {
-            User teacher = userRepository.findById(classCourseVo.getTeacherId())
-                .orElseThrow(() -> new RuntimeException("授课教师不存在"));
-            classCourse.setTeacher(teacher);
-        } else {
-            classCourse.setTeacher(null);
+            classCourse.setTeacher(resolveTeacher(classCourseVo.getTeacherId()));
         }
-        
+        if (classCourseVo.getStatus() != null) {
+            if (classCourseVo.getStatus() != 0 && classCourseVo.getStatus() != 1) {
+                throw BizException.unprocessable("排课状态只能是 0 或 1");
+            }
+            classCourse.setStatus(classCourseVo.getStatus());
+        }
         classCourseRepository.save(classCourse);
         if (classCourseVo.getSessions() != null) {
             replaceSessions(classCourse.getId(), classCourseVo.getSessions());
         }
+        auditLogService.recordEvent(9, AuthContext.userId(), null, "CLASS_COURSE", String.valueOf(id), "update");
+        return toVo(classCourse);
     }
     
     @Override
     @Transactional
     public void delete(Long id) {
         ClassCourse classCourse = classCourseRepository.findById(id)
-            .orElseThrow(() -> new RuntimeException("班级授课科目关联不存在"));
+            .orElseThrow(() -> BizException.notFound("班级授课不存在"));
+        accessService.assertClassInScope(classCourse.getClassEntity());
         classCourseSessionRepository.deleteByClassCourseId(id);
         classCourseRepository.delete(classCourse);
+        auditLogService.recordEvent(9, AuthContext.userId(), null, "CLASS_COURSE", String.valueOf(id), "delete");
     }
     
     @Override
     @Transactional
     public void batchDelete(List<Long> ids) {
+        if (ids == null) {
+            throw BizException.badRequest("ids 不能为空");
+        }
         for (Long id : ids) {
             if (classCourseRepository.existsById(id)) {
-                classCourseRepository.deleteById(id);
+                delete(id);
             }
         }
     }
@@ -268,7 +260,10 @@ public class ClassCourseServiceImpl implements ClassCourseService {
     @Transactional(readOnly = true)
     public PageResult<ClassCourseVo> list(long page, long size, Long classId) {
         List<ClassCourseVo> all = (classId == null ? classCourseRepository.findAll() : classCourseRepository.findByClassEntityId(classId))
-                .stream().map(this::toVo).collect(Collectors.toList());
+                .stream()
+                .filter(row -> inScope(row.getClassEntity()))
+                .map(this::toVo)
+                .collect(Collectors.toList());
         int from = (int) Math.min((page - 1) * size, all.size());
         int to = (int) Math.min(from + size, all.size());
         return PageResult.<ClassCourseVo>builder().page(page).size(size).total(all.size()).records(all.subList(from, to)).build();
@@ -339,6 +334,99 @@ public class ClassCourseServiceImpl implements ClassCourseService {
             }
         }
         return items;
+    }
+
+    private Integer requiredSemester(String raw) {
+        Integer semester = semesterOf(raw);
+        if (semester == null || (semester != 1 && semester != 2)) {
+            throw BizException.unprocessable("semester 只能是 1 或 2");
+        }
+        return semester;
+    }
+
+    private User resolveTeacher(Long teacherId) {
+        if (teacherId == null) {
+            return null;
+        }
+        User teacher = userRepository.findById(teacherId).orElseThrow(() -> BizException.notFound("授课教师不存在"));
+        if (teacher.getUserType() == null || teacher.getUserType() != 2) {
+            throw BizException.unprocessable("授课教师必须是教职工账号");
+        }
+        return teacher;
+    }
+
+    private void assertSessions(List<SessionSlot> sessions) {
+        if (sessions == null) {
+            return;
+        }
+        for (int i = 0; i < sessions.size(); i++) {
+            SessionSlot left = sessions.get(i);
+            validateSlot(left);
+            for (int j = i + 1; j < sessions.size(); j++) {
+                SessionSlot right = sessions.get(j);
+                validateSlot(right);
+                if (overlaps(left, right)) {
+                    throw BizException.conflict("同一授课的节次互相重叠");
+                }
+            }
+        }
+    }
+
+    private void assertNoOverlap(Long classId, String academicYear, Integer semester, Long ignoreId, List<SessionSlot> sessions) {
+        if (sessions == null || sessions.isEmpty()) {
+            return;
+        }
+        for (ClassCourse existing : classCourseRepository.findByClassEntityId(classId)) {
+            if (ignoreId != null && ignoreId.equals(existing.getId())) {
+                continue;
+            }
+            if (!academicYear.equals(existing.getAcademicYear()) || !semester.equals(existing.getSemester())) {
+                continue;
+            }
+            List<SessionSlot> others = classCourseSessionRepository.findByClassCourseId(existing.getId()).stream().map(row -> {
+                SessionSlot slot = new SessionSlot();
+                slot.setWeekday(row.getWeekday());
+                slot.setPeriodStart(row.getPeriodStart());
+                slot.setPeriodEnd(row.getPeriodEnd());
+                return slot;
+            }).toList();
+            for (SessionSlot slot : sessions) {
+                for (SessionSlot other : others) {
+                    if (overlaps(slot, other)) {
+                        throw BizException.conflict("节次与班内已有课程重叠");
+                    }
+                }
+            }
+        }
+    }
+
+    private void validateSlot(SessionSlot slot) {
+        if (slot.getWeekday() == null || slot.getWeekday() < 1 || slot.getWeekday() > 7) {
+            throw BizException.unprocessable("weekday 必须是 1-7");
+        }
+        if (slot.getPeriodStart() == null || slot.getPeriodEnd() == null
+                || slot.getPeriodStart() < 1 || slot.getPeriodEnd() > 20 || slot.getPeriodEnd() < slot.getPeriodStart()) {
+            throw BizException.unprocessable("periodStart/periodEnd 不合法");
+        }
+    }
+
+    private boolean overlaps(SessionSlot left, SessionSlot right) {
+        if (left.getWeekday() == null || !left.getWeekday().equals(right.getWeekday())) {
+            return false;
+        }
+        return left.getPeriodStart() <= right.getPeriodEnd() && right.getPeriodStart() <= left.getPeriodEnd();
+    }
+
+    private boolean inScope(Class schoolClass) {
+        if (schoolClass == null) {
+            return false;
+        }
+        try {
+            accessService.assertClassInScope(schoolClass);
+            return true;
+        } catch (BizException ex) {
+            return false;
+        }
     }
 
     private Integer semesterOf(String raw) {
