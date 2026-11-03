@@ -2,7 +2,8 @@
 -- 校园 OA 首期结构（H2，本地）
 -- 文件：db/h2/schema.sql
 --
--- 表名、字段、唯一键与 db/migration/V1__phase1_schema.sql 一致。
+-- 权威来源是 db/migration，不是本文件。改表先改 migration，再按 db/README.md 的方言清单转译到这里。
+-- 表名、字段、唯一键须与 db/migration/V1__phase1_schema.sql 一致。
 -- 相对 MySQL 脚本的差异：
 --   去掉 ENGINE / CHARSET / utf8mb4、ON UPDATE CURRENT_TIMESTAMP、SET NAMES、PREPARE。
 --   枚举仍用 TINYINT，不用 BOOLEAN。自增仍写 AUTO_INCREMENT。

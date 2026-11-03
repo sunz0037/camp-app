@@ -1,7 +1,8 @@
 -- =============================================================================
 -- 首期演示数据（H2，可重复执行）
 -- 文件：db/h2/seed.sql
--- 内容与 db/seed/phase1_demo.sql 相同，仅去掉 SET NAMES，并把变量赋值改成 H2 的等号。
+-- 权威来源是 db/seed/phase1_demo.sql。改造数先改那份，再按 db/README.md 转译到这里。
+-- 内容与 phase1_demo.sql 相同，仅去掉 SET NAMES，并把变量赋值改成 H2 的等号。
 -- 账号密码均为 Demo@123456 的 BCrypt 哈希。
 --
 -- 前置：已执行 db/h2/schema.sql。

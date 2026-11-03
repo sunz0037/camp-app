@@ -6,6 +6,28 @@
 
 表名与字段以 phase1 为准（`sys_users`、`edu_*`、`oa_*`，学籍仍是 `students`）。H2 脚本不改名。
 
+## 同源：migration 是权威，H2 只做转译
+
+`db/h2/schema.sql` 和 `db/h2/seed.sql` 不是第二套设计，禁止在 H2 里单独加表、改字段或改唯一键。
+
+1. 改表结构以 `db/migration/` 为权威（当前是 `V1__phase1_schema.sql`，旧库增量是 `V2__phase1_legacy_align.sql`）。
+2. 每次改完 migration 或 `db/seed/phase1_demo.sql`，同一提交里把结果转译到 `db/h2/`。
+3. H2 只保留方言差异，不表达另一套模型。
+
+允许的差异只有这些：
+
+- 去掉 `ENGINE`、`CHARSET`、`utf8mb4`、`ON UPDATE CURRENT_TIMESTAMP`、`SET NAMES`、`PREPARE`
+- 非唯一索引加上表名前缀（H2 索引名全库唯一）；`uk_*` 保持原名
+- `course_key` 仍是 `IFNULL(course_id, 0)`，去掉 MySQL 的 `STORED`
+- 造数里 `SET` 用 `=`，不用 `:=`；`UPDATE` 不用 `JOIN`
+
+检查清单（改库时勾一遍）：
+
+- [ ] 新表、新列、唯一键、枚举先写进 `db/migration`
+- [ ] `db/h2/schema.sql` 已按上面的方言规则转译，没有多出来的表或字段
+- [ ] 造数先改 `db/seed/phase1_demo.sql`，再同步 `db/h2/seed.sql`
+- [ ] 演示账号仍是 `Demo@123456` 的同一哈希
+
 ## 本地 H2
 
 脚本：`db/h2/schema.sql`、`db/h2/seed.sql`。和 MySQL 版相比，去掉了 `ENGINE`、`utf8mb4`、`ON UPDATE CURRENT_TIMESTAMP`。枚举继续用 `TINYINT`，不用 `BOOLEAN`。自增仍是 `AUTO_INCREMENT`。非唯一索引加了表名前缀，因为 H2 的索引名全库唯一；`uk_*` 名字不变。`course_key` 仍是 `IFNULL(course_id, 0)`。
