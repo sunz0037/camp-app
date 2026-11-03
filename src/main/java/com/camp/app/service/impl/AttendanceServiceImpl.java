@@ -327,7 +327,6 @@ public class AttendanceServiceImpl implements AttendanceService {
         vo.setCourseId(record.getCourseId());
         vo.setAttendanceDate(record.getAttendanceDate());
         vo.setGrade(record.getGrade());
-        vo.setClassName(record.getClassName());
         vo.setExceptionType(AttendanceCalculator.nameOf(record.getExceptionType()));
         vo.setConfirmStatus(AttendanceCalculator.confirmName(record.getConfirmStatus()));
         vo.setStatus(AttendanceCalculator.legacyStatus(vo.getExceptionType()));
@@ -345,24 +344,25 @@ public class AttendanceServiceImpl implements AttendanceService {
     }
 
     private void fillStudentDisplay(StudentAttendanceRecordVo vo, StudentAttendanceRecord record) {
-        if (record.getStudentId() == null) {
-            vo.setClassName(record.getClassName());
-            return;
-        }
-        studentRepository.findById(record.getStudentId()).ifPresentOrElse(student -> {
+        Student student = record.getStudentId() == null ? null : studentRepository.findById(record.getStudentId()).orElse(null);
+        if (student != null) {
             vo.setStudentNo(student.getStudentNo());
-            vo.setClassId(student.getClassId());
-            String className = student.getClassName();
-            if (className == null || className.isBlank()) {
-                className = record.getClassName();
-            }
-            if ((className == null || className.isBlank()) && student.getClassId() != null) {
-                className = classRepository.findById(student.getClassId()).map(com.camp.app.entity.Class::getClassName).orElse(className);
-            }
-            vo.setClassName(className);
             if (student.getUserId() != null) {
                 userRepository.findById(student.getUserId()).ifPresent(user -> vo.setStudentName(user.getRealName()));
             }
-        }, () -> vo.setClassName(record.getClassName()));
+        }
+        Long classId = student == null ? null : student.getClassId();
+        vo.setClassId(classId);
+        String className = null;
+        if (classId != null) {
+            className = classRepository.findById(classId).map(com.camp.app.entity.Class::getClassName).orElse(null);
+        }
+        if (className == null || className.isBlank()) {
+            className = student == null ? null : student.getClassName();
+        }
+        if (className == null || className.isBlank()) {
+            className = record.getClassName();
+        }
+        vo.setClassName(className);
     }
 }
