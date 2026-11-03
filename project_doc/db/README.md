@@ -1,5 +1,7 @@
 # 校园OA系统数据库设计文档
 
+首期以仓库根目录 [db/README.md](../../db/README.md) 和 [PHASE1_SCHEMA.md](./PHASE1_SCHEMA.md) 为准。下文是旧版说明，其中的成绩、访客和 `GRADE_ADMIN` / `LOGISTICS` 已不是首期范围。
+
 ## 一、数据库概述
 
 本数据库设计用于校园OA系统，包含以下功能模块：

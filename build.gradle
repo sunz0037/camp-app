@@ -23,11 +23,11 @@ dependencies {
     // Spring Security (for password encryption with BCrypt)
     implementation 'org.springframework.security:spring-security-crypto'
     
-    // MySQL Database Driver
+    // MySQL Database Driver（远程 / 本地 MySQL）
     implementation 'com.mysql:mysql-connector-j'
-    
-    // H2 Database (commented out, using MySQL)
-    // implementation 'com.h2database:h2'
+
+    // 本地 profile h2 使用。版本由 Spring Boot BOM 管理。
+    runtimeOnly 'com.h2database:h2'
     
     implementation 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'

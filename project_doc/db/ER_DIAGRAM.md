@@ -1,5 +1,7 @@
 # 校园OA系统数据库ER图
 
+首期表关系见 [PHASE1_SCHEMA.md](./PHASE1_SCHEMA.md)。下图是旧结构。
+
 ## Mermaid ER图
 
 ```mermaid

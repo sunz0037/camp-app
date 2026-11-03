@@ -12,6 +12,7 @@ project_doc/
 │   ├── API_STATUS.md           # API实现状态
 │   └── API_SUMMARY.md          # API接口摘要
 ├── db/                          # 数据库文档
+│   ├── PHASE1_SCHEMA.md        # 首期表、唯一键与枚举
 │   ├── CHANGELOG.md            # 数据库变更日志
 │   ├── ER_DIAGRAM.md           # ER图
 │   ├── INSERT_STUDENTS_README.md # 学生数据插入说明
@@ -41,6 +42,7 @@ project_doc/
 - **API_SUMMARY.md**: API接口清单摘要，快速查看所有接口
 
 ### 数据库文档 (db/)
+- **PHASE1_SCHEMA.md**: 首期表清单、唯一键、枚举和契约字段对照
 - **README.md**: 数据库设计文档，包含表结构说明、关系图等
 - **CHANGELOG.md**: 数据库变更日志，记录所有表结构变更
 - **ER_DIAGRAM.md**: 数据库ER图（Mermaid格式）

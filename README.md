@@ -26,7 +26,7 @@
 
 ### 1. 数据库初始化
 
-参考 [数据库初始化文档](./project_doc/guides/DATABASE_INIT.md)
+首期脚本在仓库根目录 [db/README.md](./db/README.md)（`db/migration` 与 `db/seed`）。旧的 [数据库初始化文档](./project_doc/guides/DATABASE_INIT.md) 对应历史 `schema.sql`，不是首期入口。
 
 ### 2. 配置数据库连接
 

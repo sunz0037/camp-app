@@ -1,5 +1,7 @@
 # 执行数据库建表语句说明
 
+首期建表不要再用本文的 `schema.sql` 路径。空库执行 `db/migration/V1__phase1_schema.sql`，已有旧库执行 `db/migration/V2__phase1_legacy_align.sql`，然后 `db/seed/phase1_demo.sql`。详见 `db/README.md`。
+
 ## 当前状态
 
 由于数据库连接问题（端口3306无法访问），已创建以下工具和文件供您执行建表语句：

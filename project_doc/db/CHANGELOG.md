@@ -1,5 +1,19 @@
 # 数据库设计变更日志
 
+## 首期对齐（phase 1）
+
+脚本在仓库根目录 `db/migration/`、`db/seed/`，执行顺序见 `db/README.md`。表、唯一键和枚举见 [PHASE1_SCHEMA.md](./PHASE1_SCHEMA.md)。
+
+- 账号只保留 `sys_users` + `roles` 底座，不建密码重置或首次激活流程。
+- 排课改为 `edu_class_courses` + `edu_class_course_sessions`（`period_start` / `period_end`）。
+- 考勤改为 `edu_attendance_summaries`（唯一键 `class_id + attendance_date`）和 `edu_attendance_records`。
+- 数据范围改为 `sys_teacher_classes`、`sys_affairs_grades`。
+- 公告改为 `oa_announcements`、`oa_announcement_scopes`、`oa_announcement_reads`。
+- 新增 `sys_audit_logs`。角色收敛为 `ADMIN` / `ACADEMIC` / `TEACHER` / `STUDENT`。
+- 成绩、访客保留在旧脚本中，标记 phase:2，不进入首期必跑迁移。
+
+
+
 ## 版本 2.0 - 权限最小化原则调整（2024）
 
 ### 变更概述
