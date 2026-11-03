@@ -39,6 +39,12 @@ public class AnnouncementController {
         return BaseResponse.ok(announcementService.detail(id));
     }
 
+    @PostMapping("/{id}/read")
+    public BaseResponse<java.util.Map<String, Boolean>> read(@PathVariable Long id) {
+        announcementService.markRead(id);
+        return BaseResponse.ok(java.util.Map.of("isRead", true));
+    }
+
     @PostMapping
     @RequirePermission(Phase1Permissions.ANNOUNCEMENT_PUBLISH)
     public BaseResponse<Void> create(@RequestBody AnnouncementVo announcement) {

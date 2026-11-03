@@ -9,6 +9,8 @@ import java.time.LocalDateTime;
 public class StudentAttendanceRecordVo {
     private Long id;
     private Long studentId;
+    private String studentName;
+    private String studentNo;
     private Long classId;
     private Long summaryId;
     private Long courseId;

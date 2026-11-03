@@ -116,7 +116,7 @@
 | GET/POST/PUT/DELETE | `/class-courses` | ADMIN/ACADEMIC 写；TEACHER 只读所授；STUDENT 见「我的课表」 |
 | GET | `/class-courses/my-timetable` | TEACHER/STUDENT | 当前用户课表（按 sessions 展开） |
 
-**禁止**用自由文本 `scheduleInfo` 作为唯一课表来源。
+**禁止**用自由文本 `scheduleInfo` 作为唯一课表来源。课表主路径是 `/api/v1/class-courses`（含 `sessions` 与 `/my-timetable`），不使用 `/schedules`。
 
 ---
 
@@ -132,7 +132,7 @@
 | GET | `/attendances/summaries` | ADMIN/ACADEMIC/TEACHER 按范围 |
 | POST | `/attendances/summaries` | TEACHER（本班）/ACADEMIC/ADMIN；**同一事务**写入勾选的异常 `records`；幂等键建议 `classId+date` |
 | PUT/DELETE | `/attendances/summaries/{id}` | 同写权限；改汇总时同步明细 |
-| GET | `/attendances/records` | 管理端按范围；**STUDENT：仅本人** |
+| GET | `/attendances/records` | 管理端按范围；**STUDENT：仅本人**。每条含 `studentName`、`studentNo`、`className`（关联学生/班级；手机号身份证脱敏规则不变，这两项姓名学号按范围明文） |
 | POST/PUT | `/attendances/records` | 补录/销假；教师本班 |
 
 可选：`courseId` 挂在明细上（某节课异常）；汇总仍按「班级+日」。首期**不做**学生扫码/定位自签。
@@ -143,9 +143,10 @@
 
 | 方法 | 路径 | 角色 |
 | --- | --- | --- |
-| GET | `/announcements` | 登录用户；按发布范围过滤；返回 `isRead` |
+| GET | `/announcements` | 登录用户；按发布范围过滤；返回 `isRead`，可含 `publisherName` |
 | GET | `/announcements/unread-count` | 登录用户 |
-| GET | `/announcements/{id}` | 可见范围内；打开即记已读 |
+| GET | `/announcements/{id}` | 可见范围内；打开即记已读；可含 `publisherName` |
+| POST | `/announcements/{id}/read` | 当前用户记已读，重复调用幂等 |
 | POST | `/announcements` | ADMIN/ACADEMIC 全校或指定组织；**TEACHER 仅本班/所授范围** |
 | PUT | `/announcements/{id}` | 作者或 ADMIN/ACADEMIC |
 | PUT | `/announcements/{id}/top` | ADMIN/ACADEMIC |

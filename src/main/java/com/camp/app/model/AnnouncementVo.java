@@ -12,6 +12,7 @@ public class AnnouncementVo {
     private String content;
     private String category;
     private Long publisherId;
+    private String publisherName;
     private LocalDateTime publishTime;
     private LocalDateTime expireTime;
     private Integer isTop;

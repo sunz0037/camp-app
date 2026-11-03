@@ -10,6 +10,8 @@ public interface AnnouncementService {
 
     AnnouncementVo detail(Long id);
 
+    void markRead(Long id);
+
     void create(AnnouncementVo vo);
 
     void update(Long id, AnnouncementVo vo);

@@ -72,7 +72,9 @@ paths:
       summary: 创建班级授课，sessions 含 weekday/periodStart/periodEnd/roomNo
       responses: { "200": { description: OK } }
   /class-courses/my-timetable:
-    get: { summary: 我的课表, responses: { "200": { description: OK } } }
+    get:
+      summary: 我的课表（主路径，不使用 /schedules）
+      responses: { "200": { description: OK } }
   /class-courses/{id}:
     parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
     put: { summary: 更新授课及节次, responses: { "200": { description: OK } } }
@@ -85,7 +87,10 @@ paths:
     put: { summary: 修改汇总并同步明细, responses: { "200": { description: OK } } }
     delete: { summary: 删除汇总及明细, responses: { "200": { description: OK } } }
   /attendances/records:
-    get: { summary: 异常明细，学生仅本人, responses: { "200": { description: OK } } }
+    get:
+      summary: 异常明细，学生仅本人
+      description: 每条含 studentName、studentNo、className
+      responses: { "200": { description: OK } }
     post: { summary: 补录，courseId 可空, responses: { "200": { description: OK } } }
   /announcements:
     get: { summary: 可见公告，含 isRead, responses: { "200": { description: OK } } }
@@ -94,7 +99,15 @@ paths:
     get: { summary: 未读数, responses: { "200": { description: OK } } }
   /announcements/{id}:
     parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
-    get: { summary: 详情并记已读, responses: { "200": { description: OK } } }
+    get:
+      summary: 详情并记已读
+      description: 可返回 publisherName
+      responses: { "200": { description: OK } }
+  /announcements/{id}/read:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    post:
+      summary: 当前用户记已读（幂等）
+      responses: { "200": { description: OK } }
   /dashboard/overview:
     get: { summary: 按角色聚合的工作台, responses: { "200": { description: OK } } }
   /teachers/{userId}/classes:

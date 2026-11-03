@@ -10,6 +10,7 @@ import com.camp.app.model.DataScope;
 import com.camp.app.repository.AnnouncementReadRepository;
 import com.camp.app.repository.AnnouncementRepository;
 import com.camp.app.repository.AnnouncementScopeRepository;
+import com.camp.app.repository.UserRepository;
 import com.camp.app.security.AuthContext;
 import com.camp.app.security.AuthPrincipal;
 import com.camp.app.security.Phase1Roles;
@@ -36,6 +37,7 @@ public class AnnouncementServiceImpl implements AnnouncementService {
     private final AnnouncementReadRepository announcementReadRepository;
     private final AnnouncementScopeRepository announcementScopeRepository;
     private final AccessService accessService;
+    private final UserRepository userRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -81,17 +83,25 @@ public class AnnouncementServiceImpl implements AnnouncementService {
             throw BizException.forbidden("不在公告发布范围内");
         }
         announcementRepository.incrementViewCount(id);
-        if (scope.getUserId() != null) {
-            announcementReadRepository.findByAnnouncementIdAndUserId(id, scope.getUserId()).orElseGet(() -> {
-                AnnouncementRead read = new AnnouncementRead();
-                read.setAnnouncementId(id);
-                read.setUserId(scope.getUserId());
-                return announcementReadRepository.save(read);
-            });
-        }
+        rememberRead(id, scope.getUserId());
         AnnouncementVo vo = toVo(announcement, true);
         vo.setIsRead(true);
         return vo;
+    }
+
+    @Override
+    @Transactional
+    public void markRead(Long id) {
+        Announcement announcement = announcementRepository.findById(id)
+                .orElseThrow(() -> BizException.notFound("公告不存在"));
+        DataScope scope = accessService.current();
+        if (!visible(announcement, scope)) {
+            throw BizException.forbidden("不在公告发布范围内");
+        }
+        if (scope.getUserId() == null) {
+            throw BizException.unauthorized("未登录");
+        }
+        rememberRead(id, scope.getUserId());
     }
 
     @Override
@@ -261,6 +271,9 @@ public class AnnouncementServiceImpl implements AnnouncementService {
 
     private AnnouncementVo toVo(Announcement announcement, boolean ignoreReadLookup) {
         AnnouncementVo vo = BeanMapper.map(announcement, AnnouncementVo.class);
+        if (announcement.getPublisherId() != null) {
+            userRepository.findById(announcement.getPublisherId()).ifPresent(user -> vo.setPublisherName(user.getRealName()));
+        }
         ScopeView current = scopeView(announcement.getId());
         vo.setScopeType(current.type());
         vo.setScopeIds(current.ids());
@@ -284,6 +297,18 @@ public class AnnouncementServiceImpl implements AnnouncementService {
             }
         }
         return false;
+    }
+
+    private void rememberRead(Long announcementId, Long userId) {
+        if (announcementId == null || userId == null) {
+            return;
+        }
+        announcementReadRepository.findByAnnouncementIdAndUserId(announcementId, userId).orElseGet(() -> {
+            AnnouncementRead read = new AnnouncementRead();
+            read.setAnnouncementId(announcementId);
+            read.setUserId(userId);
+            return announcementReadRepository.save(read);
+        });
     }
 
     private record ScopeView(String type, List<Long> ids) {
