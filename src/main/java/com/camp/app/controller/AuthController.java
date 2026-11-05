@@ -76,6 +76,11 @@ public class AuthController {
         return BaseResponse.ok(session);
     }
 
+    @PostMapping("/change-password")
+    public BaseResponse<LoginResponse> changePasswordPost(@RequestBody ChangePasswordRequest body) {
+        return BaseResponse.ok(authService.changePassword(AuthContext.userId(), body));
+    }
+
     @PostMapping("/activate")
     public BaseResponse<LoginResponse> activate(@RequestBody ActivateUserRequest request) {
         return BaseResponse.ok(authService.activateUser(request));

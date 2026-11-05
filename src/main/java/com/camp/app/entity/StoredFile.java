@@ -6,46 +6,69 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import lombok.Data;
 
 import java.time.LocalDateTime;
 
 /**
- * 文件元数据。字节在本地目录，不进 H2/MySQL。
+ * 上传文件的元数据，落在已合入的 oa_files。字节仍在本地目录。
+ * 网盘目录和分享不在这个上传接口里创建。
  */
 @Data
 @Entity
-@Table(name = "sys_files")
+@Table(name = "oa_files")
 public class StoredFile {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "stored_name", nullable = false, length = 128)
-    private String storedName;
+    @Column(name = "owner_id", nullable = false)
+    private Long ownerId;
 
-    @Column(name = "original_name", nullable = false, length = 255)
-    private String originalName;
+    @Column(name = "parent_id")
+    private Long parentId;
 
-    @Column(name = "content_type", nullable = false, length = 100)
-    private String contentType;
+    @Column(nullable = false, length = 255)
+    private String name;
+
+    @Column(name = "storage_key", nullable = false, length = 255)
+    private String storageKey;
+
+    @Column(length = 127)
+    private String mime;
 
     @Column(name = "size_bytes", nullable = false)
     private Long sizeBytes;
 
-    /** AVATAR、ANNOUNCEMENT 或 OTHER */
-    @Column(nullable = false, length = 32)
-    private String purpose;
+    @Column(name = "is_dir", nullable = false)
+    private Integer directory;
 
-    @Column(name = "uploader_id", nullable = false)
-    private Long uploaderId;
+    @Column(name = "deleted_at")
+    private LocalDateTime deletedAt;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
+    @Column(name = "updated_at", nullable = false)
+    private LocalDateTime updatedAt;
+
     @PrePersist
     void onCreate() {
-        createdAt = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now();
+        createdAt = now;
+        updatedAt = now;
+        if (directory == null) {
+            directory = 0;
+        }
+        if (sizeBytes == null) {
+            sizeBytes = 0L;
+        }
+    }
+
+    @PreUpdate
+    void onUpdate() {
+        updatedAt = LocalDateTime.now();
     }
 }

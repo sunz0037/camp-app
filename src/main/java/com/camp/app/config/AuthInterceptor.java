@@ -95,6 +95,7 @@ public class AuthInterceptor implements HandlerInterceptor {
         return path.contains("/api/v1/auth/activate")
                 || path.contains("/api/v1/auth/logout")
                 || path.contains("/api/v1/auth/password")
+                || path.contains("/api/v1/auth/change-password")
                 || path.contains("/api/v1/auth/refresh");
     }
 

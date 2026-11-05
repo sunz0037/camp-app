@@ -4,6 +4,7 @@ import com.camp.app.api.BizException;
 import com.camp.app.entity.StoredFile;
 import com.camp.app.model.FileVo;
 import com.camp.app.repository.StoredFileRepository;
+import com.camp.app.repository.UserRepository;
 import com.camp.app.service.FileStorageService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.FileSystemResource;
@@ -20,20 +21,25 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * 字节落在 camp.upload.dir，元数据在 sys_files。H2 与 MySQL 共用这张表。
+ * 字节落在 camp.upload.dir，元数据写入已有的 oa_files。
+ * storage_key 用 purpose/文件名，表上没有 purpose 列。目录和分享不在这里做。
  */
 @Service
 public class FileStorageServiceImpl implements FileStorageService {
     static final long MAX_BYTES = 5L * 1024 * 1024;
     private static final Set<String> IMAGES = Set.of("image/jpeg", "image/png", "image/gif", "image/webp");
     private static final Set<String> DOCUMENTS = Set.of("application/pdf", "text/plain");
+    private static final Set<String> PURPOSES = Set.of("AVATAR", "ANNOUNCEMENT", "OTHER");
 
     private final StoredFileRepository storedFileRepository;
+    private final UserRepository userRepository;
     private final Path dir;
 
     public FileStorageServiceImpl(StoredFileRepository storedFileRepository,
+                                  UserRepository userRepository,
                                   @Value("${camp.upload.dir:data/uploads}") String uploadDir) {
         this.storedFileRepository = storedFileRepository;
+        this.userRepository = userRepository;
         this.dir = Path.of(uploadDir).toAbsolutePath().normalize();
         try {
             Files.createDirectories(this.dir);
@@ -46,6 +52,9 @@ public class FileStorageServiceImpl implements FileStorageService {
     public FileVo upload(MultipartFile file, Long uploaderId, String purpose) {
         if (uploaderId == null) {
             throw BizException.unauthorized("未登录");
+        }
+        if (!userRepository.existsById(uploaderId)) {
+            throw BizException.notFound("上传人不存在");
         }
         if (file == null || file.isEmpty()) {
             throw BizException.badRequest("文件不能为空");
@@ -70,12 +79,12 @@ public class FileStorageServiceImpl implements FileStorageService {
             throw BizException.badRequest("文件保存失败");
         }
         StoredFile row = new StoredFile();
-        row.setStoredName(storedName);
-        row.setOriginalName(original);
-        row.setContentType(contentType);
+        row.setOwnerId(uploaderId);
+        row.setName(original);
+        row.setStorageKey(normalizedPurpose + "/" + storedName);
+        row.setMime(contentType);
         row.setSizeBytes(file.getSize());
-        row.setPurpose(normalizedPurpose);
-        row.setUploaderId(uploaderId);
+        row.setDirectory(0);
         row = storedFileRepository.save(row);
         return toVo(row);
     }
@@ -83,8 +92,8 @@ public class FileStorageServiceImpl implements FileStorageService {
     @Override
     public Resource load(Long fileId) {
         StoredFile row = require(fileId);
-        Path path = dir.resolve(row.getStoredName()).normalize();
-        if (!path.startsWith(dir) || !Files.exists(path)) {
+        Path path = diskPath(row);
+        if (!Files.exists(path)) {
             throw BizException.notFound("文件不存在");
         }
         return new FileSystemResource(path);
@@ -92,21 +101,19 @@ public class FileStorageServiceImpl implements FileStorageService {
 
     @Override
     public String contentType(Long fileId) {
-        String type = require(fileId).getContentType();
+        String type = require(fileId).getMime();
         return type == null || type.isBlank() ? "application/octet-stream" : type;
     }
 
     @Override
     public void delete(Long fileId, Long operatorId, boolean admin) {
         StoredFile row = require(fileId);
-        if (!admin && (operatorId == null || !operatorId.equals(row.getUploaderId()))) {
+        if (!admin && (operatorId == null || !operatorId.equals(row.getOwnerId()))) {
             throw BizException.forbidden("只能删除自己上传的文件");
         }
-        Path path = dir.resolve(row.getStoredName()).normalize();
+        Path path = diskPath(row);
         try {
-            if (path.startsWith(dir)) {
-                Files.deleteIfExists(path);
-            }
+            Files.deleteIfExists(path);
         } catch (IOException ex) {
             throw BizException.badRequest("文件删除失败");
         }
@@ -134,18 +141,46 @@ public class FileStorageServiceImpl implements FileStorageService {
         if (fileId == null) {
             throw BizException.notFound("文件不存在");
         }
-        return storedFileRepository.findById(fileId).orElseThrow(() -> BizException.notFound("文件不存在"));
+        StoredFile row = storedFileRepository.findById(fileId)
+                .orElseThrow(() -> BizException.notFound("文件不存在"));
+        if (row.getDeletedAt() != null || row.getDirectory() == null || row.getDirectory() != 0) {
+            throw BizException.notFound("文件不存在");
+        }
+        return row;
+    }
+
+    private Path diskPath(StoredFile row) {
+        String key = row.getStorageKey() == null ? "" : row.getStorageKey();
+        int slash = key.lastIndexOf('/');
+        String fileName = slash >= 0 ? key.substring(slash + 1) : key;
+        Path path = dir.resolve(fileName).normalize();
+        if (fileName.isBlank() || !path.startsWith(dir)) {
+            throw BizException.notFound("文件不存在");
+        }
+        return path;
     }
 
     private FileVo toVo(StoredFile row) {
         return FileVo.builder()
                 .fileId(row.getId())
                 .url("/api/v1/files/" + row.getId())
-                .originalName(row.getOriginalName())
-                .contentType(row.getContentType())
+                .originalName(row.getName())
+                .contentType(row.getMime())
                 .sizeBytes(row.getSizeBytes())
-                .purpose(row.getPurpose())
+                .purpose(purposeOf(row.getStorageKey()))
                 .build();
+    }
+
+    private String purposeOf(String storageKey) {
+        if (storageKey == null) {
+            return "OTHER";
+        }
+        int slash = storageKey.indexOf('/');
+        if (slash <= 0) {
+            return "OTHER";
+        }
+        String head = storageKey.substring(0, slash);
+        return PURPOSES.contains(head) ? head : "OTHER";
     }
 
     private String normalizePurpose(String purpose) {
@@ -153,7 +188,7 @@ public class FileStorageServiceImpl implements FileStorageService {
             return "OTHER";
         }
         String value = purpose.trim().toUpperCase(Locale.ROOT);
-        if (!Set.of("AVATAR", "ANNOUNCEMENT", "OTHER").contains(value)) {
+        if (!PURPOSES.contains(value)) {
             throw BizException.badRequest("purpose 只能是 AVATAR、ANNOUNCEMENT 或 OTHER");
         }
         return value;

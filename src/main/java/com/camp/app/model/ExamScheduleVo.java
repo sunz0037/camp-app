@@ -18,6 +18,15 @@ public class ExamScheduleVo {
     private Long id;
     
     private String examName;
+
+    private Long classId;
+
+    private Long courseId;
+
+    private String academicYear;
+
+    /** 1 或 2，对应 edu_exams.semester */
+    private Integer semester;
     
     private LocalDateTime examDate;
     

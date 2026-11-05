@@ -2,7 +2,7 @@
 
 > 相对首期契约 `api-contract-v1-phase1.md`。前缀、响应包、四档角色、开发态 `Bearer dev-ROLE` 不变。家长仍同 `STUDENT`。
 >
-> 本轮做了写路径加固、文件、考试成绩脚手架。访客、短信、主题、独立待办不做。
+> 本轮做了写路径加固、文件上传、考试成绩，以及来访、主题和改密别名。表用已合入的 V3（#4），登录加固用已合入的 Wave A（#5）。不另建 `exam_schedules` / `sys_files` / `sys_user_settings`。
 
 ## 完成
 
@@ -19,7 +19,7 @@
 | 考勤 | 汇总仍是同一事务写异常明细。补录 `POST /attendances/records`（别名 `/students`）校验学生在范围内，同一学生同一天同一课程重复 409。`DELETE /attendances/records/{id}` 与 `/students/{id}` 等价 |
 | 公告 | 返回带 `scopeType`/`scopeIds` 的对象。教师只能发到本人班级，且不能置顶。删除会先清受众和已读，避免外键失败。附件若是 `/api/v1/files/{id}` 会核对文件存在 |
 
-审计事件码在原 1–6 上增加（MySQL 跑 V3，H2 建库即包含）：
+审计事件码在原 1–6 上增加（MySQL 跑 `V4__phase2_audit_events.sql`，H2 建库即包含）。改密仍走 Wave A，事件码 2：
 
 | code | event_type |
 | --- | --- |
@@ -39,29 +39,35 @@
 { "fileId": 1, "url": "/api/v1/files/1", "originalName": "a.png", "contentType": "image/png", "sizeBytes": 3, "purpose": "AVATAR" }
 ```
 
-### N3 考试成绩（脚手架）
+### N3 考试成绩
 
-`camp.phase2.exam.enabled=true`（默认开）。写权限复用已有 `course:write`（管理员、教务），不新增角色。
+`camp.phase2.exam.enabled=true`（默认开）。写权限复用 `course:write`（管理员、教务）。表是 `edu_exams`、`edu_exam_scores`。路径仍是 #7 的 `/exam-schedules`、`/scores`，不另开 #6 的 `/exams`、`/exam-scores`。
 
-| 方法 | 路径 | 说明 |
+创建考试必填 `examName`、`examDate`、`classId`、`courseId`、`academicYear`、`semester`（1 或 2）。同一班级、课程、日期、名称冲突返回 409。已有成绩时删除返回 409。
+
+录入成绩必填 `examScheduleId`（即 `edu_exams.id`）、`studentId`、`score`（0–100）。学生只能看本人。同一场考试同一学生重复返回 409。响应里的 `gradePoint` 按 90/80/70/60 换成 4/3/2/1/0，**不入库，也不是 GPA 汇总**。
+
+### N4 来访、主题、改密（来自 #6，接到 #4 的表）
+
+| 能力 | 路径 | 表 |
 | --- | --- | --- |
-| GET/POST | `/exam-schedules` | 类型：月考/期中/期末，也接受 MONTHLY/MIDTERM/FINAL。创建人用登录用户，兼容旧头 `X-User-Id` |
-| PUT/DELETE | `/exam-schedules/{id}` | 更新、删除 |
-| PUT | `/exam-schedules/{id}/cancel` | 状态改为取消 |
-| GET/POST/PUT/DELETE | `/scores` `/scores/{id}` | 学生仅本人。分数 0–100。未传绩点时按 90/80/70/60 写成 4/3/2/1/0，**不是 GPA 汇总** |
+| 来访 | `GET/POST /visitors`，`PUT/DELETE /visitors/{id}`，`POST .../approve|reject|check-in|check-out` | `oa_visitors`，流水 `oa_visitor_logs` |
+| 主题 | `GET/PUT /me/settings`，`themeKey` 为 `default` / `dark` / `campus-green` / `campus-blue` | `sys_user_preferences` |
+| 改密 | `POST /auth/change-password` | 不新写密码逻辑，直接走 Wave A 的 `PUT /auth/password`（复杂度、历史、锁定、审计都在 #5） |
 
-表：`exam_schedules`、`exam_scores`。旧库若已有同名表且列不一致，V3 的 `CREATE TABLE IF NOT EXISTS` 不会改列，需要人工对齐。
+来访：学生 403。教师可登记，并查看本人登记或本人被访的单。审批、入校、离校只给管理员和教务。新建固定 `PENDING`。列表上的电话和证件号脱敏。旧 `visitor_registrations` 控制器仍由 `camp.phase2.visitor.enabled=false` 关闭，避免和本路径抢映射。没有公开预约。
 
 ## 明确不做（PHASE2-BLOCKED）
 
 | 项 | 原因 |
 | --- | --- |
-| `/visitors/**` 预约、门岗核销、公开端点 | 未实现安全边界。控制器仅在 `camp.phase2.visitor.enabled=true` 时加载，默认关闭。不要把公开预约直接暴露 |
-| 短信验证码、公开找回、主题切换 | P2，`camp.sms.enabled=false` |
-| 独立 `/todos` | P3 |
-| 成绩 GPA / 统计报表 `/statistics/**` | 只记单科 `gradePoint` |
-| 教师录入本班成绩 | 当前写入口是 `course:write`，教师没有该权限 |
-| 第五角色 `LOGISTICS` | 不新增。访客若以后要独立边界，再单独立项 |
+| 公开预约、门岗独立端点、`LOGISTICS` | 来访只给已登录的四档角色，不新增角色 |
+| 短信验证码、公开找回 | `camp.sms.enabled=false`。密码策略已由 #5 接管 |
+| 网盘目录、分享 | `oa_files` / `oa_file_shares` 已在库里。本接口只上传单个文件，不建目录、不写分享 |
+| 考试类型、公开标记、取消状态、`grade_point` 列 | `edu_exams` 没有这些列。`PUT /exam-schedules/{id}/cancel` 返回 422 |
+| #6 的 `/exams`、`/exam-scores` | 与 `/exam-schedules`、`/scores` 重复，不保留第二套控制器 |
+| 独立 `/todos`、GPA、`/statistics/**` | 未做 |
+| 教师录入本班成绩 | 写入口是 `course:write`，教师没有该权限 |
 
 ## 联调提示
 

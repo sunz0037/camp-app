@@ -3,8 +3,9 @@ info:
   title: 校园OA二期增量
   version: 2.0.0
   description: |
-    在首期 /api/v1 上补充写路径返回体、文件和考试。
-    访客、短信、待办、GPA 汇总未实现，见 api-contract-v1-phase2.md。
+    在首期 /api/v1 上补充写路径、文件、考试、来访和主题。
+    考试落在 edu_exams，文件落在 oa_files。改密别名走 Wave A。
+    短信、待办、GPA、网盘分享未实现。
 servers:
   - url: http://localhost:8080/api/v1
 paths:
@@ -47,6 +48,19 @@ paths:
     parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
     put: { summary: 修改成绩, responses: { "200": { description: OK } } }
     delete: { summary: 删除成绩, responses: { "200": { description: OK } } }
+  /visitors:
+    get: { summary: 来访列表, responses: { "200": { description: OK } } }
+    post: { summary: 登记来访，固定 PENDING, responses: { "200": { description: 返回来访 } } }
+  /visitors/{id}/approve:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    post: { summary: 管理员或教务审批, responses: { "200": { description: APPROVED } } }
+  /me/settings:
+    get: { summary: 当前用户主题, responses: { "200": { description: themeKey } } }
+    put: { summary: 更新主题, responses: { "200": { description: themeKey } } }
+  /auth/change-password:
+    post:
+      summary: 修改密码。行为与 PUT /auth/password 相同，走 Wave A
+      responses: { "200": { description: 新的登录响应 } }
 components:
   securitySchemes:
     devBearer:

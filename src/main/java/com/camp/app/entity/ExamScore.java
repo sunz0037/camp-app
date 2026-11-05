@@ -1,74 +1,59 @@
 package com.camp.app.entity;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
 import lombok.Data;
+
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 
-@Entity
-@Table(name = "exam_scores", uniqueConstraints = {
-    @UniqueConstraint(columnNames = {"student_id", "course_id", "exam_type", "semester", "academic_year"})
-})
+/**
+ * 一场考试的一名学生成绩。列对齐 edu_exam_scores。绩点不入库，由分数换算后放在响应里。
+ */
 @Data
+@Entity
+@Table(name = "edu_exam_scores")
 public class ExamScore {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "exam_id", nullable = false)
+    private Long examId;
+
     @Column(name = "student_id", nullable = false)
     private Long studentId;
 
-    @Column(name = "course_id", nullable = false)
-    private Long courseId;
-
-    @Column(name = "exam_schedule_id")
-    private Long examScheduleId;
-
-    @Column(nullable = false, length = 20)
-    private String examType;
-
-    @Column(precision = 5, scale = 2)
+    @Column(nullable = false, precision = 5, scale = 2)
     private BigDecimal score;
 
-    @Column(precision = 3, scale = 1)
-    private BigDecimal credit;
-
-    @Column(precision = 3, scale = 2)
-    private BigDecimal gradePoint;
-
-    private LocalDate examDate;
-
-    @Column(length = 20)
-    private String semester;
-
-    @Column(length = 20)
-    private String academicYear;
+    @Column(name = "rank_in_class")
+    private Integer rankInClass;
 
     @Column(length = 255)
     private String remark;
 
-    @Column(name = "remark_detail", columnDefinition = "TEXT")
-    private String remarkDetail; // 备注详情（记录如考试缺席等原因）
-
-    @Column(name = "created_by")
-    private Long createdBy;
-
-    @Column(nullable = false, updatable = false)
+    @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
-    @Column(nullable = false)
+    @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
     @PrePersist
-    protected void onCreate() {
-        createdAt = LocalDateTime.now();
-        updatedAt = LocalDateTime.now();
+    void onCreate() {
+        LocalDateTime now = LocalDateTime.now();
+        createdAt = now;
+        updatedAt = now;
     }
 
     @PreUpdate
-    protected void onUpdate() {
+    void onUpdate() {
         updatedAt = LocalDateTime.now();
     }
 }
-

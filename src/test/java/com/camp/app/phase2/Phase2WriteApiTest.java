@@ -148,10 +148,12 @@ class Phase2WriteApiTest {
                         .header("Authorization", "Bearer dev-ADMIN"))
                 .andExpect(jsonPath("$.code").value(200));
 
+        long adminId = userRepository.findByUsername("admin").orElseThrow().getId();
         MvcResult uploaded = mockMvc.perform(multipart("/api/v1/files/upload")
                         .file(new MockMultipartFile("file", "avatar.png", "image/png", new byte[]{(byte) 137, 80, 78, 71}))
                         .param("purpose", "AVATAR")
-                        .header("Authorization", "Bearer dev-ADMIN"))
+                        .header("Authorization", "Bearer dev-ADMIN")
+                        .header("X-Dev-User-Id", String.valueOf(adminId)))
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.fileId").isNumber())
                 .andExpect(jsonPath("$.data.url").exists())
@@ -163,30 +165,97 @@ class Phase2WriteApiTest {
                         .header("Authorization", "Bearer dev-ADMIN"))
                 .andExpect(jsonPath("$.code").value(200));
 
-        long adminId = userRepository.findByUsername("admin").orElseThrow().getId();
-        mockMvc.perform(post("/api/v1/exam-schedules")
+        MvcResult exam = mockMvc.perform(post("/api/v1/exam-schedules")
                         .header("Authorization", "Bearer dev-ADMIN")
                         .header("X-Dev-User-Id", String.valueOf(adminId))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"examName":"期中","examDate":"2026-11-20T08:00:00","targetGrade":"初中一年级","examType":"MIDTERM","isPublic":false}
-                                """))
+                                {"examName":"联调期中","examDate":"2026-12-01T08:00:00","classId":%d,"courseId":%d,"academicYear":"2026-2027","semester":1}
+                                """.formatted(classOne.getId(), courseId)))
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.examType").value("期中"));
+                .andExpect(jsonPath("$.data.examName").value("联调期中"))
+                .andExpect(jsonPath("$.data.classId").value(classOne.getId()))
+                .andReturn();
+        long examId = objectMapper.readTree(exam.getResponse().getContentAsString()).get("data").get("id").asLong();
 
         mockMvc.perform(post("/api/v1/scores")
                         .header("Authorization", "Bearer dev-ADMIN")
+                        .header("X-Dev-User-Id", String.valueOf(adminId))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"studentId":%d,"courseId":%d,"examType":"期中","semester":"1","academicYear":"2026-2027","score":92}
-                                """.formatted(demoStudent.getId(), courseId)))
+                                {"studentId":%d,"examScheduleId":%d,"score":92}
+                                """.formatted(demoStudent.getId(), examId)))
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.gradePoint").value(4.0));
 
         mockMvc.perform(get("/api/v1/scores")
+                        .param("examScheduleId", String.valueOf(examId))
                         .header("Authorization", "Bearer dev-STUDENT")
                         .header("X-Dev-User-Id", String.valueOf(demoStudent.getUserId())))
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.total").value(1));
+
+        mockMvc.perform(put("/api/v1/exam-schedules/" + examId + "/cancel")
+                        .header("Authorization", "Bearer dev-ADMIN")
+                        .header("X-Dev-User-Id", String.valueOf(adminId)))
+                .andExpect(jsonPath("$.code").value(422));
+
+        mockMvc.perform(get("/api/v1/visitors")
+                        .header("Authorization", "Bearer dev-STUDENT"))
+                .andExpect(jsonPath("$.code").value(403));
+
+        MvcResult visit = mockMvc.perform(post("/api/v1/visitors")
+                        .header("Authorization", "Bearer dev-TEACHER")
+                        .header("X-Dev-User-Id", String.valueOf(teacherUserId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"visitorName":"联调访客","phone":"13800001111","purpose":"送材料","hostUserId":%d,"appointmentTime":"2026-12-02T09:00:00"}
+                                """.formatted(adminId)))
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.status").value("PENDING"))
+                .andReturn();
+        long visitId = objectMapper.readTree(visit.getResponse().getContentAsString()).get("data").get("id").asLong();
+        mockMvc.perform(post("/api/v1/visitors/" + visitId + "/approve")
+                        .header("Authorization", "Bearer dev-TEACHER")
+                        .header("X-Dev-User-Id", String.valueOf(teacherUserId)))
+                .andExpect(jsonPath("$.code").value(403));
+        mockMvc.perform(post("/api/v1/visitors/" + visitId + "/approve")
+                        .header("Authorization", "Bearer dev-ADMIN")
+                        .header("X-Dev-User-Id", String.valueOf(adminId)))
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.status").value("APPROVED"));
+        mockMvc.perform(get("/api/v1/visitors")
+                        .param("keyword", "联调访客")
+                        .header("Authorization", "Bearer dev-TEACHER")
+                        .header("X-Dev-User-Id", String.valueOf(teacherUserId)))
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.items[0].phone").value("138****1111"));
+
+        mockMvc.perform(get("/api/v1/me/settings")
+                        .header("Authorization", "Bearer dev-ADMIN")
+                        .header("X-Dev-User-Id", String.valueOf(adminId)))
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.themeKey").value("default"));
+        mockMvc.perform(put("/api/v1/me/settings")
+                        .header("Authorization", "Bearer dev-ADMIN")
+                        .header("X-Dev-User-Id", String.valueOf(adminId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"themeKey\":\"campus-green\"}"))
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.themeKey").value("campus-green"));
+
+        mockMvc.perform(post("/api/v1/auth/change-password")
+                        .header("Authorization", "Bearer dev-ADMIN")
+                        .header("X-Dev-User-Id", String.valueOf(userId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"oldPassword\":\"wrong\",\"newPassword\":\"Demo@654321\"}"))
+                .andExpect(jsonPath("$.code").value(400));
+        mockMvc.perform(post("/api/v1/auth/change-password")
+                        .header("Authorization", "Bearer dev-ADMIN")
+                        .header("X-Dev-User-Id", String.valueOf(userId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"oldPassword\":\"Demo@123456\",\"newPassword\":\"Demo@654321\"}"))
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.accessToken").exists());
     }
 }
