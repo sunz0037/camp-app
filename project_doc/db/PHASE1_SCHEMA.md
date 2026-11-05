@@ -4,7 +4,7 @@
 
 账号只做底座：`sys_users` 存登录名和密码哈希，`roles` 存四档角色。没有密码重置表、没有首次激活字段，造数也不覆盖这些流程。`sys_audit_logs` 仍预留密码重置事件码，供以后写入，本批不造这类数据。
 
-成绩（`exam_scores` / `exam_schedules`）和访客（`visitor_registrations`）是 phase:2，只留在 `src/main/resources/db/schema.sql` 等旧脚本里。
+二期增量（密码策略列、考试、访客、偏好、网盘）见 [PHASE2_SCHEMA.md](./PHASE2_SCHEMA.md)。旧脚本里的 `exam_scores`、`exam_schedules`、`visitor_registrations` 不作为二期结构。
 
 ## 表清单
 
