@@ -2,7 +2,11 @@ package com.camp.app.controller;
 
 import com.camp.app.api.BaseResponse;
 import com.camp.app.api.PageResult;
+import com.camp.app.api.Paging;
 import com.camp.app.model.GradeVo;
+import com.camp.app.model.OptionItem;
+import com.camp.app.security.Phase1Permissions;
+import com.camp.app.security.RequirePermission;
 import com.camp.app.service.GradeService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -13,7 +17,7 @@ import java.util.List;
  * 年级管理控制器
  */
 @RestController
-@RequestMapping("/api/grades")
+@RequestMapping("/api/v1/grades")
 @RequiredArgsConstructor
 public class GradeController {
     
@@ -25,11 +29,17 @@ public class GradeController {
     @GetMapping
     public BaseResponse<PageResult<GradeVo>> list(
             @RequestParam(defaultValue = "1") long page,
+            @RequestParam(name = "pageSize", required = false) Long pageSize,
             @RequestParam(defaultValue = "20") long size,
             @RequestParam(required = false) String gradeType,
             @RequestParam(required = false) Integer status,
             @RequestParam(required = false) String keyword) {
-        return BaseResponse.ok(gradeService.list(page, size, gradeType, status, keyword));
+        return BaseResponse.ok(gradeService.list(Paging.page(page), Paging.size(pageSize, size), gradeType, status, keyword));
+    }
+
+    @GetMapping("/options")
+    public BaseResponse<java.util.List<OptionItem>> options() {
+        return BaseResponse.ok(gradeService.options());
     }
     
     /**
@@ -44,6 +54,7 @@ public class GradeController {
      * 创建年级
      */
     @PostMapping
+    @RequirePermission(Phase1Permissions.ORG_WRITE)
     public BaseResponse<Void> create(@RequestBody GradeVo grade) {
         gradeService.create(grade);
         return BaseResponse.ok(null);
@@ -53,6 +64,7 @@ public class GradeController {
      * 更新年级
      */
     @PutMapping("/{id}")
+    @RequirePermission(Phase1Permissions.ORG_WRITE)
     public BaseResponse<Void> update(@PathVariable Long id, @RequestBody GradeVo grade) {
         gradeService.update(id, grade);
         return BaseResponse.ok(null);
@@ -62,6 +74,7 @@ public class GradeController {
      * 删除年级
      */
     @DeleteMapping("/{id}")
+    @RequirePermission(Phase1Permissions.ORG_WRITE)
     public BaseResponse<Void> delete(@PathVariable Long id) {
         gradeService.delete(id);
         return BaseResponse.ok(null);

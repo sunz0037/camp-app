@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.*;
 
 @RequiredArgsConstructor
 @RestController
-@RequestMapping("/api/data-permissions")
+@RequestMapping("/api/v1/data-permissions")
 public class DataPermissionController {
 
     private final DataPermissionService dataPermissionService;

@@ -1,15 +1,19 @@
 package com.camp.app.service.impl;
 
+import com.camp.app.api.BizException;
 import com.camp.app.api.PageResult;
 import com.camp.app.entity.Class;
 import com.camp.app.entity.Grade;
 import com.camp.app.entity.Student;
 import com.camp.app.entity.User;
 import com.camp.app.model.ClassVo;
+import com.camp.app.model.DataScope;
+import com.camp.app.model.OptionItem;
 import com.camp.app.repository.ClassRepository;
 import com.camp.app.repository.GradeRepository;
 import com.camp.app.repository.StudentRepository;
 import com.camp.app.repository.UserRepository;
+import com.camp.app.service.AccessService;
 import com.camp.app.service.ClassService;
 import com.camp.app.util.BeanMapper;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +37,7 @@ public class ClassServiceImpl implements ClassService {
     private final GradeRepository gradeRepository;
     private final UserRepository userRepository;
     private final StudentRepository studentRepository;
+    private final AccessService accessService;
     
     @Override
     public PageResult<ClassVo> list(long page, long size, Long gradeId, String gradeType, Integer status, String keyword) {
@@ -149,8 +154,8 @@ public class ClassServiceImpl implements ClassService {
         
         // 检查是否有学生关联，如果有则不允许删除
         List<Student> students = studentRepository.findByClassId(id);
-        if (!students.isEmpty()) {
-            throw new RuntimeException("该班级下还有 " + students.size() + " 名学生，无法删除。请先转移或删除学生");
+        if (students.stream().anyMatch(student -> !Boolean.TRUE.equals(student.getIsDeleted()))) {
+            throw BizException.conflict("该班级下仍有学生，无法删除");
         }
         
         classRepository.delete(classEntity);
@@ -163,6 +168,17 @@ public class ClassServiceImpl implements ClassService {
             .collect(Collectors.toList());
     }
     
+    @Override
+    @Transactional(readOnly = true)
+    public List<OptionItem> options(Long gradeId) {
+        DataScope scope = accessService.current();
+        return classRepository.findByStatus(1).stream()
+                .filter(item -> gradeId == null || (item.getGrade() != null && gradeId.equals(item.getGrade().getId())))
+                .filter(item -> scope.isAll() || (scope.getClassIds() != null && scope.getClassIds().contains(item.getId())))
+                .map(item -> new OptionItem(item.getId(), item.getClassName(), item.getGrade() == null ? null : item.getGrade().getId()))
+                .collect(Collectors.toList());
+    }
+
     @Override
     public List<ClassVo> listEnabledByGradeId(Long gradeId) {
         return classRepository.findByGradeId(gradeId).stream()

@@ -1,0 +1,152 @@
+openapi: 3.0.3
+info:
+  title: 校园OA首期接口
+  version: 1.0.1
+  description: |
+    前缀 /api/v1。响应 {code,message,data,timestamp}。
+    开发态（profile=dev 或 camp.dev-auth.enabled=true）使用
+    Authorization: Bearer dev-ADMIN|dev-ACADEMIC|dev-TEACHER|dev-STUDENT，
+    或请求头 X-Dev-Role。可选 X-Dev-User-Id、X-Dev-Class-Ids、X-Dev-Grade-Ids。
+    考试、访客、短信找回不在本文件。
+servers:
+  - url: http://localhost:8080/api/v1
+paths:
+  /auth/login:
+    post:
+      summary: 账号登录（密码认证后置，保留最小入口）
+      responses: { "200": { description: OK } }
+  /auth/me:
+    get:
+      summary: 当前用户
+      responses: { "200": { description: OK } }
+  /grades:
+    get: { summary: 年级列表, responses: { "200": { description: OK } } }
+    post: { summary: 创建年级 org:write, responses: { "200": { description: OK } } }
+  /grades/options:
+    get: { summary: 年级下拉（按数据范围）, responses: { "200": { description: OK } } }
+  /grades/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    get: { summary: 年级详情, responses: { "200": { description: OK } } }
+    put: { summary: 更新年级, responses: { "200": { description: OK } } }
+    delete: { summary: 删除年级，有班级时 409, responses: { "200": { description: OK } } }
+  /classes:
+    get: { summary: 班级列表, responses: { "200": { description: OK } } }
+    post: { summary: 创建班级, responses: { "200": { description: OK } } }
+  /classes/options:
+    get: { summary: 班级下拉, responses: { "200": { description: OK } } }
+  /classes/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    put: { summary: 更新班级, responses: { "200": { description: OK } } }
+    delete: { summary: 删除班级，有学生时 409, responses: { "200": { description: OK } } }
+  /students:
+    get: { summary: 学生列表（手机号身份证掩码）, responses: { "200": { description: OK } } }
+    post: { summary: 创建学生 student:write, responses: { "200": { description: OK } } }
+  /students/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    get: { summary: 学生详情, responses: { "200": { description: OK } } }
+    put: { summary: 更新学生, responses: { "200": { description: OK } } }
+    delete: { summary: 软删除, responses: { "200": { description: OK } } }
+  /students/import-template:
+    get: { summary: 导入模板, responses: { "200": { description: CSV } } }
+  /students/batch-import:
+    post: { summary: 批量导入, responses: { "200": { description: OK } } }
+  /students/export:
+    get: { summary: 导出（脱敏）, responses: { "200": { description: CSV } } }
+  /students/{studentId}/emergency-contacts:
+    parameters: [{ name: studentId, in: path, required: true, schema: { type: integer } }]
+    get: { summary: 应急联系人, responses: { "200": { description: OK } } }
+    post: { summary: 新增应急联系人, responses: { "200": { description: OK } } }
+  /emergency-contacts/{id}/primary:
+    put:
+      summary: 设为主要联系人
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: OK } }
+  /courses:
+    get: { summary: 课程库, responses: { "200": { description: OK } } }
+    post: { summary: 创建课程 course:write, responses: { "200": { description: OK } } }
+  /courses/options:
+    get: { summary: 课程下拉, responses: { "200": { description: OK } } }
+  /class-courses:
+    get: { summary: 班级授课列表, responses: { "200": { description: OK } } }
+    post:
+      summary: 创建班级授课，sessions 含 weekday/periodStart/periodEnd/roomNo
+      responses: { "200": { description: OK } }
+  /class-courses/my-timetable:
+    get:
+      summary: 我的课表（主路径，不使用 /schedules）
+      responses: { "200": { description: OK } }
+  /class-courses/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    put: { summary: 更新授课及节次, responses: { "200": { description: OK } } }
+    delete: { summary: 删除授课, responses: { "200": { description: OK } } }
+  /attendances/summaries:
+    get: { summary: 班级日汇总，不带 courseId, responses: { "200": { description: OK } } }
+    post: { summary: 同一事务写入汇总和异常明细, responses: { "200": { description: OK } } }
+  /attendances/summaries/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    put: { summary: 修改汇总并同步明细, responses: { "200": { description: OK } } }
+    delete: { summary: 删除汇总及明细, responses: { "200": { description: OK } } }
+  /attendances/records:
+    get:
+      summary: 异常明细，学生仅本人
+      description: 每条含 studentName、studentNo、className
+      responses: { "200": { description: OK } }
+    post: { summary: 补录，courseId 可空, responses: { "200": { description: OK } } }
+  /announcements:
+    get: { summary: 可见公告，含 isRead, responses: { "200": { description: OK } } }
+    post: { summary: scopeType + scopeIds, responses: { "200": { description: OK } } }
+  /announcements/unread-count:
+    get: { summary: 未读数, responses: { "200": { description: OK } } }
+  /announcements/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    get:
+      summary: 详情并记已读
+      description: 可返回 publisherName
+      responses: { "200": { description: OK } }
+  /announcements/{id}/read:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    post:
+      summary: 当前用户记已读（幂等）
+      responses: { "200": { description: OK } }
+  /dashboard/overview:
+    get: { summary: 按角色聚合的工作台, responses: { "200": { description: OK } } }
+  /teachers/{userId}/classes:
+    parameters: [{ name: userId, in: path, required: true, schema: { type: integer } }]
+    get: { summary: 教师班级授权, responses: { "200": { description: OK } } }
+    put: { summary: 覆盖教师班级, responses: { "200": { description: OK } } }
+  /academics/{userId}/grades:
+    parameters: [{ name: userId, in: path, required: true, schema: { type: integer } }]
+    get: { summary: 教务年级授权, responses: { "200": { description: OK } } }
+    put: { summary: 覆盖教务年级, responses: { "200": { description: OK } } }
+  /files/upload:
+    post: { summary: 上传文件, responses: { "200": { description: OK } } }
+components:
+  securitySchemes:
+    devBearer:
+      type: http
+      scheme: bearer
+      description: dev-ADMIN | dev-ACADEMIC | dev-TEACHER | dev-STUDENT
+  schemas:
+    SessionSlot:
+      type: object
+      properties:
+        weekday: { type: integer }
+        periodStart: { type: integer }
+        periodEnd: { type: integer }
+        roomNo: { type: string }
+    AttendanceSummary:
+      type: object
+      properties:
+        classId: { type: integer }
+        attendanceDate: { type: string, format: date }
+        expectedCount: { type: integer }
+        actualCount: { type: integer }
+        records:
+          type: array
+          items:
+            type: object
+            properties:
+              studentId: { type: integer }
+              courseId: { type: integer, nullable: true }
+              exceptionType: { type: string, enum: [LATE, EARLY_LEAVE, PERSONAL_LEAVE, SICK_LEAVE, ABSENT] }
+              confirmStatus: { type: string, enum: [PENDING, CONFIRMED, CLEARED] }

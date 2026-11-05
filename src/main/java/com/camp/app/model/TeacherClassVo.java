@@ -8,6 +8,8 @@ import java.time.LocalDateTime;
 public class TeacherClassVo {
     private Long id;
     private Long teacherId;
+    private Long classId;
+    private Long gradeId;
     private String grade;
     private String className;
     private String subject;

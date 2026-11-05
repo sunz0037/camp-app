@@ -6,14 +6,15 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "student_attendance_records", uniqueConstraints = {
-    @UniqueConstraint(columnNames = {"student_id", "attendance_date"})
-})
+@Table(name = "edu_attendance_records")
 @Data
 public class StudentAttendanceRecord {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Column(name = "summary_id")
+    private Long summaryId;
 
     @Column(name = "student_id", nullable = false)
     private Long studentId;
@@ -21,31 +22,48 @@ public class StudentAttendanceRecord {
     @Column(nullable = false)
     private LocalDate attendanceDate;
 
-    @Column(nullable = false)
-    private Integer status; // 1-缺勤，2-迟到，3-请假，4-早退
+    @Column(name = "course_id")
+    private Long courseId;
 
-    @Column(length = 50)
-    private String reasonType; // 生病、参加比赛等
+    /** 1 LATE 2 EARLY_LEAVE 3 PERSONAL_LEAVE 4 SICK_LEAVE 5 ABSENT */
+    @Column(name = "exception_type", nullable = false)
+    private Integer exceptionType;
 
-    @Column(length = 500)
-    private String reasonDescription;
+    /** 1 PENDING 2 CONFIRMED 3 CLEARED */
+    @Column(name = "confirm_status", nullable = false)
+    private Integer confirmStatus = 2;
 
-    @Column(name = "parent_notified")
-    private Boolean parentNotified = false;
+    @Column(name = "reason_type", length = 30)
+    private String reasonType;
 
-    @Column(name = "parent_notify_time")
-    private LocalDateTime parentNotifyTime;
+    @Column(name = "reason_detail", length = 255)
+    private String reasonDetail;
 
-    @Column(name = "parent_confirm_time")
-    private LocalDateTime parentConfirmTime;
+    @Column(length = 20)
+    private String grade;
 
-    @Column(length = 500)
+    @Column(name = "class_name", length = 50)
+    private String className;
+
+    @Column(name = "notified_contact_id")
+    private Long notifiedContactId;
+
+    @Column(name = "notified_contact_name", length = 50)
+    private String notifiedContactName;
+
+    @Column(name = "notified_method", length = 30)
+    private String notifiedMethod;
+
+    @Column(name = "notified_at")
+    private LocalDateTime notifiedAt;
+
+    @Column(length = 255)
     private String attachmentUrl;
 
-    @Column(name = "recorded_by")
-    private Long recordedBy;
+    @Column(name = "recorder_id")
+    private Long recorderId;
 
-    @Column(length = 500)
+    @Column(length = 255)
     private String remark;
 
     @Column(nullable = false, updatable = false)
@@ -58,6 +76,9 @@ public class StudentAttendanceRecord {
     protected void onCreate() {
         createdAt = LocalDateTime.now();
         updatedAt = LocalDateTime.now();
+        if (confirmStatus == null) {
+            confirmStatus = 2;
+        }
     }
 
     @PreUpdate
@@ -65,4 +86,3 @@ public class StudentAttendanceRecord {
         updatedAt = LocalDateTime.now();
     }
 }
-

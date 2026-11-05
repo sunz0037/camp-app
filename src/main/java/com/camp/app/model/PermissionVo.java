@@ -20,5 +20,6 @@ public class PermissionVo {
     private Integer status;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private java.util.List<PermissionVo> children;
 }
 

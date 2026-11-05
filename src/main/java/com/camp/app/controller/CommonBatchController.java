@@ -9,7 +9,7 @@ import org.springframework.web.multipart.MultipartFile;
 import lombok.RequiredArgsConstructor;
 
 @RestController
-@RequestMapping("/api/common")
+@RequestMapping("/api/v1/common")
 @RequiredArgsConstructor
 public class CommonBatchController {
 

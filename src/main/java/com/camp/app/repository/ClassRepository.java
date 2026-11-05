@@ -26,6 +26,8 @@ public interface ClassRepository extends JpaRepository<Class, Long> {
      * 根据年级ID查询
      */
     List<Class> findByGradeId(Long gradeId);
+
+    List<Class> findByGradeIdIn(java.util.Collection<Long> gradeIds);
     
     /**
      * 根据年级ID和班级序号查询

@@ -2,6 +2,7 @@ package com.camp.app.service;
 
 import com.camp.app.api.PageResult;
 import com.camp.app.model.ClassVo;
+import com.camp.app.model.OptionItem;
 
 import java.util.List;
 
@@ -44,5 +45,7 @@ public interface ClassService {
      * 根据年级ID查询启用的班级列表
      */
     List<ClassVo> listEnabledByGradeId(Long gradeId);
+
+    List<OptionItem> options(Long gradeId);
 }
 

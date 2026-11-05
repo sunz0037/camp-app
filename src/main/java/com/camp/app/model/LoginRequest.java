@@ -1,7 +1,5 @@
 package com.camp.app.model;
 
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 /**
@@ -16,15 +14,18 @@ import lombok.Data;
 public class LoginRequest {
     
     /**
-     * 身份类型：1-学生，2-教工，3-家长/访客
+     * 身份类型：1-学生，2-教工。首期统一登录可不传。家长没有独立身份。
      */
-    @NotNull(message = "身份类型不能为空")
     private Integer identityType;
+
+    /**
+     * 统一登录用户名（学号或工号）。与 identifier 二选一。
+     */
+    private String username;
     
     /**
      * 唯一标识：学号（学生）或工号（教工）
      */
-    @NotBlank(message = "学号/工号不能为空")
     private String identifier;
     
     /**

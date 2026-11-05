@@ -1,7 +1,10 @@
 package com.camp.app.model;
 
+import com.camp.app.util.FlexibleStringDeserializer;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import lombok.Data;
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 班级授课科目关联VO
@@ -18,7 +21,9 @@ public class ClassCourseVo {
     private String courseType;
     private Long teacherId;
     private String teacherName;
+    @JsonDeserialize(using = FlexibleStringDeserializer.class)
     private String semester;
+    private List<SessionSlot> sessions;
     private String academicYear;
     private Integer status;
     private LocalDateTime createdAt;

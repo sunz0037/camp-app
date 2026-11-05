@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.*;
 
 @RequiredArgsConstructor
 @RestController
-@RequestMapping("/api/grade-admins/{adminId}/grades")
+@RequestMapping("/api/v1/grade-admins/{adminId}/grades")
 public class GradeAdminGradeController {
 
     private final GradeAdminGradeService gradeAdminGradeService;

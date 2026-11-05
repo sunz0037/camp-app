@@ -2,6 +2,7 @@ package com.camp.app.service;
 
 import com.camp.app.api.PageResult;
 import com.camp.app.model.GradeVo;
+import com.camp.app.model.OptionItem;
 
 import java.util.List;
 
@@ -44,5 +45,7 @@ public interface GradeService {
      * 根据年级类型查询
      */
     List<GradeVo> listByType(String gradeType);
+
+    List<OptionItem> options();
 }
 

@@ -20,7 +20,12 @@ public class LoginResponse {
     private Boolean isFirstLogin;
     
     /**
-     * JWT Token（首次登录时为null，激活后返回）
+     * 访问令牌。与 token 同值，契约字段名为 accessToken。
+     */
+    private String accessToken;
+
+    /**
+     * JWT Token（与 accessToken 同值，兼容旧客户端）
      */
     private String token;
     
@@ -49,5 +54,8 @@ public class LoginResponse {
         private String realName;
         private Integer userType;
         private String avatarUrl;
+        private java.util.List<String> roles;
+        private java.util.List<String> permissions;
+        private com.camp.app.model.DataScope dataScope;
     }
 }

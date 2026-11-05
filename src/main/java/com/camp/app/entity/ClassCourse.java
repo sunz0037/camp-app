@@ -12,13 +12,13 @@ import java.time.LocalDateTime;
 @Data
 @EqualsAndHashCode(callSuper = false)
 @Entity
-@Table(name = "class_courses", indexes = {
+@Table(name = "edu_class_courses", indexes = {
     @Index(name = "idx_class_id", columnList = "class_id"),
     @Index(name = "idx_course_id", columnList = "course_id"),
     @Index(name = "idx_teacher_id", columnList = "teacher_id"),
     @Index(name = "idx_status", columnList = "status")
 }, uniqueConstraints = {
-    @UniqueConstraint(name = "uk_class_course", columnNames = {"class_id", "course_id", "semester", "academic_year"})
+    @UniqueConstraint(name = "uk_class_course_term", columnNames = {"class_id", "course_id", "academic_year", "semester"})
 })
 public class ClassCourse {
     
@@ -38,10 +38,10 @@ public class ClassCourse {
     @JoinColumn(name = "teacher_id")
     private User teacher;
     
-    @Column(name = "semester", length = 20)
-    private String semester;
+    @Column(name = "semester")
+    private Integer semester;
     
-    @Column(name = "academic_year", length = 20)
+    @Column(name = "academic_year", length = 20, nullable = false)
     private String academicYear;
     
     @Column(name = "status", nullable = false)

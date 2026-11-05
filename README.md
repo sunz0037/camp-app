@@ -42,16 +42,54 @@
 
 参考 [登录系统使用指南](./project_doc/guides/LOGIN_GUIDE.md)
 
+## 首期范围
+
+接口契约：[project_doc/api/api-contract-v1-phase1.md](project_doc/api/api-contract-v1-phase1.md)。前缀 `/api/v1`。
+
+角色四档：`ADMIN` > `ACADEMIC` > `TEACHER` > `STUDENT`（家长与学生同权，没有独立家长角色）。
+
+首期打通：组织（年级/班级）、学生与应急联系人、课程库与班级授课（`weekday` + `periodStart` + `periodEnd` + `roomNo`）、考勤汇总与异常明细、公告与已读、工作台 `GET /api/v1/dashboard/overview`。
+
+考试/成绩、访客、短信找回默认关闭（`camp.phase2.enabled=false`、`camp.sms.enabled=false`）。与旧文档里的六角色（含后勤/访客/年级管理员）和考试访客全量接口不是同一交付面。
+
+建表：[db/README.md](db/README.md)。
+
+## 本地联调
+
+本地启动连 **H2 内存库**，不依赖远程 MySQL。配置与数据库 PR 的 `application-h2` 相同，脚本只走 `db/h2/`。
+
+```bash
+./gradlew bootRun --args='--spring.profiles.active=h2'
+```
+
+- 端口 `8080`，没有额外 context-path，接口前缀 `/api/v1`
+- 连接串：`jdbc:h2:mem:camp;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE`（用户 `sa`，密码空）
+- 启动时自动执行 `db/h2/schema.sql` 和 `db/h2/seed.sql`。MySQL 空库用 `db/migration/V1__phase1_schema.sql` + `db/seed/phase1_demo.sql`，旧库用 `V2`
+- `spring.jpa.hibernate.ddl-auto=none`，Hibernate 不改表
+- CORS 允许 `http://localhost:5173` 与 `http://localhost:4173`（同时保留 3000）
+- 演示账号密码都是 `Demo@123456`。用户名 `admin`、`academic01`、`teacher01`、`student01`，用 `X-Dev-User-Id` 绑定（空库上通常是 1–4）
+
+## 开发态鉴权
+
+`h2` profile 下生效（也可设 `camp.dev-auth.enabled=true`）。业务接口按这个身份做权限和数据范围，不走完整密码登录。
+
+```http
+Authorization: Bearer dev-TEACHER
+X-Dev-User-Id: 3
+X-Dev-Class-Ids: 1
+X-Dev-Grade-Ids: 1
+```
+
+`X-Dev-Role: TEACHER` 与 Bearer 二选一。不传用户或范围头时，默认用户 1 管理员、2 教务、3 教师、4 学生，范围回退到 `sys_affairs_grades` / `sys_teacher_classes` 或学籍。
+
 ## 主要功能
 
-- ✅ 三类身份登录（学生、教工、家长/访客）
-- ✅ 首次登录激活机制
-- ✅ 学生信息管理
-- ✅ 考试成绩管理
-- ✅ 校园公告
-- ✅ 来访登记
-- ✅ 考勤管理
-- ✅ 权限管理
+- 四档角色与开发态联调身份
+- 学生信息与应急联系人
+- 年级、班级、课程与结构化课表
+- 考勤汇总（班级+日期）与异常明细
+- 公告发布范围与已读
+- 工作台概览
 
 ## 项目结构
 

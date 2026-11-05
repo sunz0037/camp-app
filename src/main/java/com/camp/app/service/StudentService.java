@@ -1,6 +1,7 @@
 package com.camp.app.service;
 
 import com.camp.app.api.PageResult;
+import com.camp.app.model.ImportResultVo;
 import com.camp.app.model.StudentVo;
 
 public interface StudentService {
@@ -9,5 +10,11 @@ public interface StudentService {
     void create(StudentVo student);
     void update(Long id, StudentVo student);
     void delete(Long id);
+
+    String importTemplate();
+
+    ImportResultVo batchImport(String csv);
+
+    String exportCsv();
 }
 

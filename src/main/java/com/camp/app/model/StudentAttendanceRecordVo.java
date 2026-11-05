@@ -9,6 +9,15 @@ import java.time.LocalDateTime;
 public class StudentAttendanceRecordVo {
     private Long id;
     private Long studentId;
+    private String studentName;
+    private String studentNo;
+    private Long classId;
+    private Long summaryId;
+    private Long courseId;
+    /** LATE | EARLY_LEAVE | PERSONAL_LEAVE | SICK_LEAVE | ABSENT */
+    private String exceptionType;
+    /** PENDING | CONFIRMED | CLEARED */
+    private String confirmStatus;
     private LocalDate attendanceDate;
     private String grade;
     private String className;

@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/permissions")
+@RequestMapping("/api/v1/permissions")
 @lombok.RequiredArgsConstructor
 public class PermissionController {
 
@@ -18,6 +18,11 @@ public class PermissionController {
     @GetMapping
     public BaseResponse<List<PermissionVo>> listAll() {
         return BaseResponse.ok(permissionService.listAll());
+    }
+
+    @GetMapping("/tree")
+    public BaseResponse<List<PermissionVo>> tree() {
+        return BaseResponse.ok(permissionService.tree());
     }
 }
 

@@ -14,6 +14,8 @@ public class StudentVo {
     // 用户信息（从User表关联获取）
     private String realName; // 学生姓名（从User表获取）
     private String username; // 用户名（从User表获取）
+    private String phone;
+    private String idCard;
     
     // 保留冗余字段用于显示
     private String grade;
@@ -42,6 +44,7 @@ public class StudentVo {
      * 0-休学，1-在读，2-毕业，3-退学
      */
     private Integer status;
+    private Boolean isDeleted;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

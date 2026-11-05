@@ -11,6 +11,9 @@ public class ClassAttendanceDailyVo {
     private LocalDate attendanceDate;
     private String grade;
     private String className;
+    private Long classId;
+    private Integer earlyLeaveCount;
+    private java.util.List<StudentAttendanceRecordVo> records;
     private Integer expectedCount;
     private Integer presentCount;
     private Integer absentCount;
