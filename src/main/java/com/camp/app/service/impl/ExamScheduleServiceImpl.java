@@ -3,6 +3,7 @@ package com.camp.app.service.impl;
 import com.camp.app.api.BizException;
 import com.camp.app.api.PageResult;
 import com.camp.app.entity.Class;
+import com.camp.app.entity.Course;
 import com.camp.app.entity.ExamSchedule;
 import com.camp.app.entity.User;
 import com.camp.app.model.DataScope;
@@ -22,9 +23,13 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
- * 考试安排落在 edu_exams。没有考试类型、公开标记和取消状态这几列，对应能力记在契约的 PHASE2-BLOCKED。
+ * 考试安排落在 edu_exams。没有考试类型、公开标记和取消状态这几列。
+ * /api/v1/exams 与本服务是同一张表，不另写一份。
  */
 @Service
 @RequiredArgsConstructor
@@ -41,20 +46,42 @@ public class ExamScheduleServiceImpl implements ExamScheduleService {
     public PageResult<ExamScheduleVo> list(Integer page, Integer size, String targetGrade,
                                            String examType, Boolean isPublic, Integer status,
                                            String keyword) {
+        return list(page, size, targetGrade, examType, isPublic, status, keyword, null, null, null, null, null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PageResult<ExamScheduleVo> list(Integer page, Integer size, String targetGrade,
+                                           String examType, Boolean isPublic, Integer status,
+                                           String keyword, String gradeName, Long classId, Long courseId,
+                                           String academicYear, Integer semester) {
         rejectUnsupportedFilter(targetGrade, examType, isPublic, status);
         int pageNo = page == null || page < 1 ? 1 : page;
         int pageSize = size == null || size < 1 ? 20 : Math.min(size, 100);
         DataScope scope = accessService.current();
-        String key = keyword == null ? null : keyword.trim();
+        String key = blank(keyword);
+        String grade = blank(gradeName);
+        String year = blank(academicYear);
+        Map<Long, Course> courses = courseRepository.findAll().stream()
+                .collect(Collectors.toMap(Course::getId, Function.identity()));
+        Map<Long, Class> classes = classRepository.findAll().stream()
+                .collect(Collectors.toMap(Class::getId, Function.identity()));
         List<ExamSchedule> visible = examScheduleRepository.findAll().stream()
                 .filter(row -> classVisible(scope, row.getClassId()))
-                .filter(row -> key == null || key.isEmpty() || (row.getTitle() != null && row.getTitle().contains(key)))
+                .filter(row -> classId == null || classId.equals(row.getClassId()))
+                .filter(row -> courseId == null || courseId.equals(row.getCourseId()))
+                .filter(row -> year == null || year.equals(row.getAcademicYear()))
+                .filter(row -> semester == null || semester.equals(row.getSemester()))
+                .filter(row -> grade == null || grade.equals(gradeNameOf(classes.get(row.getClassId()))))
+                .filter(row -> key == null || matchesKeyword(row, key, courses, classes))
                 .sorted(Comparator.comparing(ExamSchedule::getExamDate, Comparator.nullsLast(Comparator.reverseOrder()))
                         .thenComparing(ExamSchedule::getId, Comparator.reverseOrder()))
                 .toList();
         int from = Math.min((pageNo - 1) * pageSize, visible.size());
         int to = Math.min(from + pageSize, visible.size());
-        List<ExamScheduleVo> items = visible.subList(from, to).stream().map(this::toVo).toList();
+        List<ExamScheduleVo> items = visible.subList(from, to).stream()
+                .map(row -> toVo(row, courses.get(row.getCourseId()), classes.get(row.getClassId())))
+                .toList();
         return PageResult.<ExamScheduleVo>builder().page(pageNo).size(pageSize).total(visible.size()).records(items).build();
     }
 
@@ -69,6 +96,9 @@ public class ExamScheduleServiceImpl implements ExamScheduleService {
     public ExamScheduleVo create(ExamScheduleVo vo, Long createdBy) {
         if (vo == null) {
             throw BizException.badRequest("请求体不能为空");
+        }
+        if (vo.requestsCancel()) {
+            throw BizException.unprocessable("edu_exams 没有状态列，取消考试未实现");
         }
         if (createdBy == null) {
             throw BizException.unauthorized("未登录");
@@ -105,6 +135,9 @@ public class ExamScheduleServiceImpl implements ExamScheduleService {
     public ExamScheduleVo update(Long id, ExamScheduleVo vo) {
         if (vo == null) {
             throw BizException.badRequest("请求体不能为空");
+        }
+        if (vo.requestsCancel()) {
+            throw BizException.unprocessable("edu_exams 没有状态列，取消考试未实现");
         }
         ExamSchedule row = requiredVisible(id);
         if (vo.getClassId() != null) {
@@ -182,11 +215,36 @@ public class ExamScheduleServiceImpl implements ExamScheduleService {
     private void rejectUnsupportedFilter(String targetGrade, String examType, Boolean isPublic, Integer status) {
         if ((targetGrade != null && !targetGrade.isBlank()) || (examType != null && !examType.isBlank())
                 || isPublic != null || status != null) {
-            throw BizException.badRequest("edu_exams 不支持按年级名称、考试类型、公开标记或状态筛选");
+            throw BizException.badRequest(ExamScheduleService.UNSUPPORTED_FILTER);
         }
     }
 
+    private boolean matchesKeyword(ExamSchedule row, String key, Map<Long, Course> courses, Map<Long, Class> classes) {
+        if (row.getTitle() != null && row.getTitle().contains(key)) {
+            return true;
+        }
+        Course course = courses.get(row.getCourseId());
+        if (course != null && course.getCourseName() != null && course.getCourseName().contains(key)) {
+            return true;
+        }
+        Class schoolClass = classes.get(row.getClassId());
+        return schoolClass != null && schoolClass.getClassName() != null && schoolClass.getClassName().contains(key);
+    }
+
+    private String gradeNameOf(Class schoolClass) {
+        if (schoolClass == null || schoolClass.getGrade() == null) {
+            return null;
+        }
+        return schoolClass.getGrade().getGradeName();
+    }
+
     private ExamScheduleVo toVo(ExamSchedule row) {
+        return toVo(row,
+                row.getCourseId() == null ? null : courseRepository.findById(row.getCourseId()).orElse(null),
+                row.getClassId() == null ? null : classRepository.findById(row.getClassId()).orElse(null));
+    }
+
+    private ExamScheduleVo toVo(ExamSchedule row, Course course, Class schoolClass) {
         ExamScheduleVo vo = new ExamScheduleVo();
         vo.setId(row.getId());
         vo.setExamName(row.getTitle());
@@ -198,10 +256,27 @@ public class ExamScheduleServiceImpl implements ExamScheduleService {
         vo.setCreatedBy(row.getCreatedBy());
         vo.setCreatedAt(row.getCreatedAt());
         vo.setUpdatedAt(row.getUpdatedAt());
+        if (course != null) {
+            vo.setCourseName(course.getCourseName());
+        }
+        if (schoolClass != null) {
+            vo.setClassName(schoolClass.getClassName());
+            String gradeName = gradeNameOf(schoolClass);
+            vo.setGradeName(gradeName);
+            vo.setTargetGrade(gradeName);
+        }
         if (row.getCreatedBy() != null) {
             userRepository.findById(row.getCreatedBy()).ifPresent(user -> vo.setCreatedByName(user.getRealName()));
         }
         return vo;
+    }
+
+    private String blank(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String value = raw.trim();
+        return value.isEmpty() ? null : value;
     }
 
     private String requiredText(String raw, String label, int max) {
