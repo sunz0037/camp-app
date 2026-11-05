@@ -1,206 +1,231 @@
 package com.camp.app.service.impl;
 
+import com.camp.app.api.BizException;
 import com.camp.app.api.PageResult;
+import com.camp.app.entity.Class;
 import com.camp.app.entity.ExamSchedule;
 import com.camp.app.entity.User;
+import com.camp.app.model.DataScope;
 import com.camp.app.model.ExamScheduleVo;
+import com.camp.app.repository.ClassRepository;
+import com.camp.app.repository.CourseRepository;
 import com.camp.app.repository.ExamScheduleRepository;
+import com.camp.app.repository.ExamScoreRepository;
 import com.camp.app.repository.UserRepository;
+import com.camp.app.service.AccessService;
 import com.camp.app.service.ExamScheduleService;
-import com.camp.app.util.BeanMapper;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.StringUtils;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
- * 考试安排服务实现类
+ * 考试安排落在 edu_exams。没有考试类型、公开标记和取消状态这几列，对应能力记在契约的 PHASE2-BLOCKED。
  */
-@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ExamScheduleServiceImpl implements ExamScheduleService {
-    
     private final ExamScheduleRepository examScheduleRepository;
+    private final ExamScoreRepository examScoreRepository;
+    private final ClassRepository classRepository;
+    private final CourseRepository courseRepository;
     private final UserRepository userRepository;
-    
+    private final AccessService accessService;
+
     @Override
     @Transactional(readOnly = true)
-    public PageResult<ExamScheduleVo> list(Integer page, Integer size, String targetGrade, 
-                                           String examType, Boolean isPublic, Integer status, 
+    public PageResult<ExamScheduleVo> list(Integer page, Integer size, String targetGrade,
+                                           String examType, Boolean isPublic, Integer status,
                                            String keyword) {
-        Pageable pageable = PageRequest.of(page - 1, size, Sort.by(Sort.Direction.DESC, "examDate"));
-        Page<ExamSchedule> examSchedulePage;
-        
-        // 构建查询条件
-        if (StringUtils.hasText(keyword)) {
-            // 关键词搜索（考试名称）
-            examSchedulePage = examScheduleRepository.findAll(pageable);
-            // 这里可以添加更复杂的搜索逻辑
-        } else if (StringUtils.hasText(targetGrade) && StringUtils.hasText(examType)) {
-            examSchedulePage = examScheduleRepository.findByTargetGradeAndExamType(targetGrade, examType, pageable);
-        } else if (StringUtils.hasText(targetGrade)) {
-            examSchedulePage = examScheduleRepository.findByTargetGrade(targetGrade, pageable);
-        } else if (StringUtils.hasText(examType)) {
-            examSchedulePage = examScheduleRepository.findByExamType(examType, pageable);
-        } else if (isPublic != null) {
-            examSchedulePage = examScheduleRepository.findByIsPublic(isPublic, pageable);
-        } else if (status != null) {
-            examSchedulePage = examScheduleRepository.findByStatus(status, pageable);
-        } else {
-            examSchedulePage = examScheduleRepository.findAll(pageable);
-        }
-        
-        // 过滤关键词（如果提供）
-        if (StringUtils.hasText(keyword)) {
-            List<ExamSchedule> filtered = examSchedulePage.getContent().stream()
-                .filter(e -> e.getExamName().contains(keyword))
-                .collect(Collectors.toList());
-            // 这里简化处理，实际应该用更复杂的查询
-        }
-        
-        List<ExamScheduleVo> voList = examSchedulePage.getContent().stream()
-            .map(this::convertToVo)
-            .collect(Collectors.toList());
-        
-        return PageResult.<ExamScheduleVo>builder()
-            .page(page)
-            .size(size)
-            .total(examSchedulePage.getTotalElements())
-            .records(voList)
-            .build();
+        rejectUnsupportedFilter(targetGrade, examType, isPublic, status);
+        int pageNo = page == null || page < 1 ? 1 : page;
+        int pageSize = size == null || size < 1 ? 20 : Math.min(size, 100);
+        DataScope scope = accessService.current();
+        String key = keyword == null ? null : keyword.trim();
+        List<ExamSchedule> visible = examScheduleRepository.findAll().stream()
+                .filter(row -> classVisible(scope, row.getClassId()))
+                .filter(row -> key == null || key.isEmpty() || (row.getTitle() != null && row.getTitle().contains(key)))
+                .sorted(Comparator.comparing(ExamSchedule::getExamDate, Comparator.nullsLast(Comparator.reverseOrder()))
+                        .thenComparing(ExamSchedule::getId, Comparator.reverseOrder()))
+                .toList();
+        int from = Math.min((pageNo - 1) * pageSize, visible.size());
+        int to = Math.min(from + pageSize, visible.size());
+        List<ExamScheduleVo> items = visible.subList(from, to).stream().map(this::toVo).toList();
+        return PageResult.<ExamScheduleVo>builder().page(pageNo).size(pageSize).total(visible.size()).records(items).build();
     }
-    
+
     @Override
     @Transactional(readOnly = true)
     public ExamScheduleVo getById(Long id) {
-        ExamSchedule examSchedule = examScheduleRepository.findById(id)
-            .orElseThrow(() -> new RuntimeException("考试安排不存在"));
-        return convertToVo(examSchedule);
+        return toVo(requiredVisible(id));
     }
-    
+
     @Override
     @Transactional
     public ExamScheduleVo create(ExamScheduleVo vo, Long createdBy) {
-        // 验证创建人是否为教工
+        if (vo == null) {
+            throw BizException.badRequest("请求体不能为空");
+        }
+        if (createdBy == null) {
+            throw BizException.unauthorized("未登录");
+        }
         User creator = userRepository.findById(createdBy)
-            .orElseThrow(() -> new RuntimeException("创建人不存在"));
-        if (creator.getUserType() == null || creator.getUserType() != 2) {
-            throw new RuntimeException("只有教工可以创建考试安排");
+                .orElseThrow(() -> BizException.notFound("创建人不存在"));
+        Class schoolClass = requiredClass(vo.getClassId());
+        accessService.assertClassInScope(schoolClass);
+        if (vo.getCourseId() == null || !courseRepository.existsById(vo.getCourseId())) {
+            throw BizException.badRequest("课程不存在");
         }
-        
-        // 验证考试类型
-        if (!isValidExamType(vo.getExamType())) {
-            throw new RuntimeException("考试类型无效，必须是：月考、期中、期末");
-        }
-        
-        // 验证年级格式
-        if (!isValidGrade(vo.getTargetGrade())) {
-            throw new RuntimeException("年级格式无效，必须是：小学1-6年级、初中1-3年级、高中1-3年级");
-        }
-        
-        ExamSchedule examSchedule = BeanMapper.map(vo, ExamSchedule.class);
-        examSchedule.setCreatedBy(createdBy);
-        examSchedule.setStatus(1); // 默认正常状态
-        
-        examSchedule = examScheduleRepository.save(examSchedule);
-        log.info("创建考试安排成功: id={}, examName={}, createdBy={}", 
-            examSchedule.getId(), examSchedule.getExamName(), createdBy);
-        
-        return convertToVo(examSchedule);
+        String title = requiredText(vo.getExamName(), "考试名称", 100);
+        LocalDate examDate = requiredDate(vo.getExamDate());
+        String academicYear = requiredText(vo.getAcademicYear(), "学年", 20);
+        int semester = requiredSemester(vo.getSemester());
+        examScheduleRepository.findByClassIdAndCourseIdAndExamDateAndTitle(
+                schoolClass.getId(), vo.getCourseId(), examDate, title
+        ).ifPresent(existing -> {
+            throw BizException.conflict("同一班级、课程、日期和名称的考试已存在");
+        });
+        ExamSchedule row = new ExamSchedule();
+        row.setClassId(schoolClass.getId());
+        row.setCourseId(vo.getCourseId());
+        row.setTitle(title);
+        row.setExamDate(examDate);
+        row.setAcademicYear(academicYear);
+        row.setSemester(semester);
+        row.setCreatedBy(creator.getId());
+        return toVo(examScheduleRepository.save(row));
     }
-    
+
     @Override
     @Transactional
     public ExamScheduleVo update(Long id, ExamScheduleVo vo) {
-        ExamSchedule examSchedule = examScheduleRepository.findById(id)
-            .orElseThrow(() -> new RuntimeException("考试安排不存在"));
-        
-        // 验证考试类型
-        if (vo.getExamType() != null && !isValidExamType(vo.getExamType())) {
-            throw new RuntimeException("考试类型无效，必须是：月考、期中、期末");
+        if (vo == null) {
+            throw BizException.badRequest("请求体不能为空");
         }
-        
-        // 验证年级格式
-        if (vo.getTargetGrade() != null && !isValidGrade(vo.getTargetGrade())) {
-            throw new RuntimeException("年级格式无效，必须是：小学1-6年级、初中1-3年级、高中1-3年级");
+        ExamSchedule row = requiredVisible(id);
+        if (vo.getClassId() != null) {
+            Class schoolClass = requiredClass(vo.getClassId());
+            accessService.assertClassInScope(schoolClass);
+            row.setClassId(schoolClass.getId());
+        } else {
+            accessService.assertClassInScope(requiredClass(row.getClassId()));
         }
-        
-        BeanMapper.copyProperties(vo, examSchedule);
-        examSchedule = examScheduleRepository.save(examSchedule);
-        log.info("更新考试安排成功: id={}", id);
-        
-        return convertToVo(examSchedule);
+        if (vo.getCourseId() != null) {
+            if (!courseRepository.existsById(vo.getCourseId())) {
+                throw BizException.badRequest("课程不存在");
+            }
+            row.setCourseId(vo.getCourseId());
+        }
+        if (vo.getExamName() != null) {
+            row.setTitle(requiredText(vo.getExamName(), "考试名称", 100));
+        }
+        if (vo.getExamDate() != null) {
+            row.setExamDate(requiredDate(vo.getExamDate()));
+        }
+        if (vo.getAcademicYear() != null) {
+            row.setAcademicYear(requiredText(vo.getAcademicYear(), "学年", 20));
+        }
+        if (vo.getSemester() != null) {
+            row.setSemester(requiredSemester(vo.getSemester()));
+        }
+        examScheduleRepository.findByClassIdAndCourseIdAndExamDateAndTitle(
+                row.getClassId(), row.getCourseId(), row.getExamDate(), row.getTitle()
+        ).filter(existing -> !existing.getId().equals(row.getId())).ifPresent(existing -> {
+            throw BizException.conflict("同一班级、课程、日期和名称的考试已存在");
+        });
+        return toVo(examScheduleRepository.save(row));
     }
-    
+
     @Override
     @Transactional
     public void delete(Long id) {
-        ExamSchedule examSchedule = examScheduleRepository.findById(id)
-            .orElseThrow(() -> new RuntimeException("考试安排不存在"));
-        
-        // 检查是否有成绩关联
-        // TODO: 可以添加检查逻辑，如果有成绩关联，不允许删除或提示
-        
-        examScheduleRepository.delete(examSchedule);
-        log.info("删除考试安排成功: id={}", id);
-    }
-    
-    @Override
-    @Transactional
-    public ExamScheduleVo cancel(Long id) {
-        ExamSchedule examSchedule = examScheduleRepository.findById(id)
-            .orElseThrow(() -> new RuntimeException("考试安排不存在"));
-        
-        examSchedule.setStatus(0);
-        examSchedule = examScheduleRepository.save(examSchedule);
-        log.info("取消考试安排成功: id={}", id);
-        
-        return convertToVo(examSchedule);
-    }
-    
-    /**
-     * 转换为VO
-     */
-    private ExamScheduleVo convertToVo(ExamSchedule examSchedule) {
-        ExamScheduleVo vo = BeanMapper.map(examSchedule, ExamScheduleVo.class);
-        
-        // 填充创建人姓名
-        if (examSchedule.getCreatedBy() != null) {
-            userRepository.findById(examSchedule.getCreatedBy())
-                .ifPresent(user -> vo.setCreatedByName(user.getRealName()));
+        ExamSchedule row = requiredVisible(id);
+        accessService.assertClassInScope(requiredClass(row.getClassId()));
+        if (examScoreRepository.countByExamId(id) > 0) {
+            throw BizException.conflict("已有成绩，不能删除考试");
         }
-        
+        examScheduleRepository.delete(row);
+    }
+
+    @Override
+    public ExamScheduleVo cancel(Long id) {
+        throw BizException.unprocessable("edu_exams 没有状态列，取消考试未实现");
+    }
+
+    private ExamSchedule requiredVisible(Long id) {
+        ExamSchedule row = examScheduleRepository.findById(id)
+                .orElseThrow(() -> BizException.notFound("考试安排不存在"));
+        if (!classVisible(accessService.current(), row.getClassId())) {
+            throw BizException.forbidden("超出数据范围");
+        }
+        return row;
+    }
+
+    private boolean classVisible(DataScope scope, Long classId) {
+        if (scope == null || scope.isAll()) {
+            return true;
+        }
+        return classId != null && scope.getClassIds() != null && scope.getClassIds().contains(classId);
+    }
+
+    private Class requiredClass(Long classId) {
+        if (classId == null) {
+            throw BizException.badRequest("班级不能为空");
+        }
+        return classRepository.findById(classId).orElseThrow(() -> BizException.badRequest("班级不存在"));
+    }
+
+    private void rejectUnsupportedFilter(String targetGrade, String examType, Boolean isPublic, Integer status) {
+        if ((targetGrade != null && !targetGrade.isBlank()) || (examType != null && !examType.isBlank())
+                || isPublic != null || status != null) {
+            throw BizException.badRequest("edu_exams 不支持按年级名称、考试类型、公开标记或状态筛选");
+        }
+    }
+
+    private ExamScheduleVo toVo(ExamSchedule row) {
+        ExamScheduleVo vo = new ExamScheduleVo();
+        vo.setId(row.getId());
+        vo.setExamName(row.getTitle());
+        vo.setClassId(row.getClassId());
+        vo.setCourseId(row.getCourseId());
+        vo.setAcademicYear(row.getAcademicYear());
+        vo.setSemester(row.getSemester());
+        vo.setExamDate(row.getExamDate() == null ? null : row.getExamDate().atStartOfDay());
+        vo.setCreatedBy(row.getCreatedBy());
+        vo.setCreatedAt(row.getCreatedAt());
+        vo.setUpdatedAt(row.getUpdatedAt());
+        if (row.getCreatedBy() != null) {
+            userRepository.findById(row.getCreatedBy()).ifPresent(user -> vo.setCreatedByName(user.getRealName()));
+        }
         return vo;
     }
-    
-    /**
-     * 验证考试类型
-     */
-    private boolean isValidExamType(String examType) {
-        return "月考".equals(examType) || "期中".equals(examType) || "期末".equals(examType);
-    }
-    
-    /**
-     * 验证年级格式
-     * 现在年级从年级管理模块获取，只需要验证不为空即可
-     * 如果需要更严格的验证，可以从年级管理服务中查询年级是否存在
-     */
-    private boolean isValidGrade(String grade) {
-        if (grade == null || grade.isEmpty()) {
-            return false;
+
+    private String requiredText(String raw, String label, int max) {
+        if (raw == null || raw.isBlank()) {
+            throw BizException.badRequest(label + "不能为空");
         }
-        // 年级名称从年级管理模块获取，这里只做非空验证
-        // 如果需要，可以调用GradeService验证年级是否存在
-        return true;
+        String value = raw.trim();
+        if (value.length() > max) {
+            throw BizException.badRequest(label + "过长");
+        }
+        return value;
+    }
+
+    private LocalDate requiredDate(LocalDateTime examDate) {
+        if (examDate == null) {
+            throw BizException.badRequest("考试时间不能为空");
+        }
+        return examDate.toLocalDate();
+    }
+
+    private int requiredSemester(Integer semester) {
+        if (semester == null || (semester != 1 && semester != 2)) {
+            throw BizException.badRequest("学期只能是 1 或 2");
+        }
+        return semester;
     }
 }
-

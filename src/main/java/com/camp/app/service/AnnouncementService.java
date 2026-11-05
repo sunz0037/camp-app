@@ -12,9 +12,9 @@ public interface AnnouncementService {
 
     void markRead(Long id);
 
-    void create(AnnouncementVo vo);
+    AnnouncementVo create(AnnouncementVo vo);
 
-    void update(Long id, AnnouncementVo vo);
+    AnnouncementVo update(Long id, AnnouncementVo vo);
 
     void top(Long id, Integer isTop);
 

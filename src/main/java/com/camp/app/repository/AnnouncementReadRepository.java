@@ -13,4 +13,6 @@ public interface AnnouncementReadRepository extends JpaRepository<AnnouncementRe
     List<AnnouncementRead> findByUserIdAndAnnouncementIdIn(Long userId, Collection<Long> announcementIds);
 
     long countByUserIdAndAnnouncementIdIn(Long userId, Collection<Long> announcementIds);
+
+    void deleteByAnnouncementId(Long announcementId);
 }

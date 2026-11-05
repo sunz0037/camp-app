@@ -1,63 +1,65 @@
 package com.camp.app.entity;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
 import lombok.Data;
+
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
- * 考试安排实体类
+ * 班级考试。列对齐已合入的 edu_exams，不使用旧的 exam_schedules。
  */
-@Entity
-@Table(name = "exam_schedules")
 @Data
+@Entity
+@Table(name = "edu_exams")
 public class ExamSchedule {
-    
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-    
-    @Column(name = "exam_name", nullable = false, length = 100)
-    private String examName;
-    
+
+    @Column(name = "course_id", nullable = false)
+    private Long courseId;
+
+    @Column(name = "class_id", nullable = false)
+    private Long classId;
+
+    @Column(nullable = false, length = 100)
+    private String title;
+
     @Column(name = "exam_date", nullable = false)
-    private LocalDateTime examDate;
-    
-    @Column(name = "target_grade", nullable = false, length = 20)
-    private String targetGrade;
-    
-    @Column(name = "exam_type", nullable = false, length = 20)
-    private String examType; // 月考、期中、期末
-    
-    @Column(name = "is_public", nullable = false)
-    private Boolean isPublic; // 是否公开：false-不公开，true-公开
-    
-    @Column(name = "remark", columnDefinition = "TEXT")
-    private String remark;
-    
+    private LocalDate examDate;
+
+    @Column(name = "academic_year", nullable = false, length = 20)
+    private String academicYear;
+
+    @Column(nullable = false)
+    private Integer semester;
+
     @Column(name = "created_by", nullable = false)
     private Long createdBy;
-    
-    @Column(name = "status", nullable = false)
-    private Integer status; // 0-已取消，1-正常
-    
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
-    
+
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
-    
+
     @PrePersist
-    protected void onCreate() {
-        createdAt = LocalDateTime.now();
-        updatedAt = LocalDateTime.now();
-        if (status == null) {
-            status = 1; // 默认正常状态
-        }
+    void onCreate() {
+        LocalDateTime now = LocalDateTime.now();
+        createdAt = now;
+        updatedAt = now;
     }
-    
+
     @PreUpdate
-    protected void onUpdate() {
+    void onUpdate() {
         updatedAt = LocalDateTime.now();
     }
 }
-

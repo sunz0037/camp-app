@@ -79,19 +79,17 @@ public class AttendanceController {
 
     @PostMapping({"/records", "/students"})
     @RequirePermission(Phase1Permissions.ATTENDANCE_RECORD)
-    public BaseResponse<Void> createStudentAttendance(@RequestBody StudentAttendanceRecordVo record) {
-        attendanceService.createStudentAttendance(record);
-        return BaseResponse.ok(null);
+    public BaseResponse<StudentAttendanceRecordVo> createStudentAttendance(@RequestBody StudentAttendanceRecordVo record) {
+        return BaseResponse.ok(attendanceService.createStudentAttendance(record));
     }
 
     @PutMapping({"/records/{id}", "/students/{id}"})
     @RequirePermission(Phase1Permissions.ATTENDANCE_RECORD)
-    public BaseResponse<Void> updateStudentAttendance(@PathVariable Long id, @RequestBody StudentAttendanceRecordVo record) {
-        attendanceService.updateStudentAttendance(id, record);
-        return BaseResponse.ok(null);
+    public BaseResponse<StudentAttendanceRecordVo> updateStudentAttendance(@PathVariable Long id, @RequestBody StudentAttendanceRecordVo record) {
+        return BaseResponse.ok(attendanceService.updateStudentAttendance(id, record));
     }
 
-    @DeleteMapping("/students/{id}")
+    @DeleteMapping({"/records/{id}", "/students/{id}"})
     @RequirePermission(Phase1Permissions.ATTENDANCE_RECORD)
     public BaseResponse<Void> deleteStudentAttendance(@PathVariable Long id) {
         attendanceService.deleteStudentAttendance(id);

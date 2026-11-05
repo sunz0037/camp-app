@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
@@ -26,9 +27,10 @@ import org.springframework.web.multipart.MultipartFile;
 public class FileController {
     private final FileStorageService fileStorageService;
 
-    @PostMapping("/upload")
-    public BaseResponse<FileVo> upload(@RequestPart("file") MultipartFile file) {
-        return BaseResponse.ok(fileStorageService.upload(file, AuthContext.userId()));
+    @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public BaseResponse<FileVo> upload(@RequestPart("file") MultipartFile file,
+                                       @RequestParam(value = "purpose", required = false) String purpose) {
+        return BaseResponse.ok(fileStorageService.upload(file, AuthContext.userId(), purpose));
     }
 
     @GetMapping("/{fileId}")

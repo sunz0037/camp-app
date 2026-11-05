@@ -3,6 +3,7 @@ package com.camp.app.model;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 public class UserVo {
@@ -22,6 +23,8 @@ public class UserVo {
      */
     private Integer status;
     private String avatarUrl;
+    /** 创建或编辑时可选。缺省按 userType 映射 STUDENT/TEACHER/ADMIN。初始密码只在创建时生效。 */
+    private List<String> roleCodes;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

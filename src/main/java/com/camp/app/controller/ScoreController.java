@@ -3,6 +3,9 @@ package com.camp.app.controller;
 import com.camp.app.api.BaseResponse;
 import com.camp.app.api.PageResult;
 import com.camp.app.model.ExamScoreVo;
+import com.camp.app.security.AuthContext;
+import com.camp.app.security.Phase1Permissions;
+import com.camp.app.security.RequirePermission;
 import com.camp.app.service.ExamScoreService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -10,7 +13,7 @@ import org.springframework.web.bind.annotation.*;
 
 @RequiredArgsConstructor
 @RestController
-@ConditionalOnProperty(name = "camp.phase2.enabled", havingValue = "true")
+@ConditionalOnProperty(name = "camp.phase2.exam.enabled", havingValue = "true")
 @RequestMapping("/api/v1/scores")
 public class ScoreController {
 
@@ -34,18 +37,19 @@ public class ScoreController {
     }
 
     @PostMapping
-    public BaseResponse<Void> create(@RequestBody ExamScoreVo score) {
-        examScoreService.create(score);
-        return BaseResponse.ok(null);
+    @RequirePermission(Phase1Permissions.COURSE_WRITE)
+    public BaseResponse<ExamScoreVo> create(@RequestBody ExamScoreVo score) {
+        return BaseResponse.ok(examScoreService.create(score));
     }
 
     @PutMapping("/{id}")
-    public BaseResponse<Void> update(@PathVariable Long id, @RequestBody ExamScoreVo score) {
-        examScoreService.update(id, score);
-        return BaseResponse.ok(null);
+    @RequirePermission(Phase1Permissions.COURSE_WRITE)
+    public BaseResponse<ExamScoreVo> update(@PathVariable Long id, @RequestBody ExamScoreVo score) {
+        return BaseResponse.ok(examScoreService.update(id, score));
     }
 
     @DeleteMapping("/{id}")
+    @RequirePermission(Phase1Permissions.COURSE_WRITE)
     public BaseResponse<Void> delete(@PathVariable Long id) {
         examScoreService.delete(id);
         return BaseResponse.ok(null);

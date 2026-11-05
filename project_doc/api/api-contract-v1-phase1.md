@@ -5,6 +5,8 @@
 > **开发态鉴权**（`profile=h2`、`profile=dev`，或 `camp.dev-auth.enabled=true`）：
 > `Authorization: Bearer dev-ADMIN|dev-ACADEMIC|dev-TEACHER|dev-STUDENT`，或请求头 `X-Dev-Role` 取同样的角色名。
 > 可选 `X-Dev-User-Id`、`X-Dev-Class-Ids`、`X-Dev-Grade-Ids`（逗号分隔）。业务接口按该身份做权限和数据范围。完整密码登录后置。
+>
+> 二期写路径、文件、考试、来访和主题见 `api-contract-v1-phase2.md`。短信、公开找回、待办、GPA 仍未做。
 
 
 - 版本：v1.0.1
@@ -182,13 +184,16 @@
 
 ---
 
-## 10. Phase 2 仅清单（不实现）
+## 10. Phase 2
 
-- `/exam-schedules`、`/scores`、GPA 统计
-- `/visitors/**` 含公开预约与门岗核销
-- `/statistics/**` 报表中心
+已实现的路径见 `api-contract-v1-phase2.md`：写路径、`/files`、`/exam-schedules`、`/scores`、`/visitors`、`/me/settings`、`POST /auth/change-password`。
+
+以下仍不在本期：
+
+- GPA 统计、`/statistics/**` 报表中心
 - 短信验证码与公开找回密码
 - 独立 `/todos`
+- 公开来访预约
 
 ---
 

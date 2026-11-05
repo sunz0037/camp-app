@@ -21,12 +21,12 @@ public interface UserService {
     /**
      * 创建用户
      */
-    void create(UserVo userVo);
+    UserVo create(UserVo userVo);
     
     /**
-     * 更新用户信息
+     * 更新用户信息。password 字段会被忽略，初始密码只在创建时写入。
      */
-    void update(Long id, UserVo userVo);
+    UserVo update(Long id, UserVo userVo);
     
     /**
      * 删除用户

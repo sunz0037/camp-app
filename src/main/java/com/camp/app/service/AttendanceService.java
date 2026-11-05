@@ -16,7 +16,7 @@ public interface AttendanceService {
 
     PageResult<StudentAttendanceRecordVo> listStudentAttendance(long page, long size, String grade, String className, String attendanceDate, Integer status);
     PageResult<StudentAttendanceRecordVo> listRecords(long page, long size, Long classId, Long studentId, String attendanceDate);
-    void createStudentAttendance(StudentAttendanceRecordVo vo);
-    void updateStudentAttendance(Long id, StudentAttendanceRecordVo vo);
+    StudentAttendanceRecordVo createStudentAttendance(StudentAttendanceRecordVo vo);
+    StudentAttendanceRecordVo updateStudentAttendance(Long id, StudentAttendanceRecordVo vo);
     void deleteStudentAttendance(Long id);
 }

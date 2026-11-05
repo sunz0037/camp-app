@@ -69,17 +69,20 @@ public class ClassCourseController {
      */
     @PostMapping
     @RequirePermission(Phase1Permissions.CLASS_COURSE_WRITE)
-    public BaseResponse<Void> create(@RequestBody ClassCourseVo classCourseVo) {
-        classCourseService.create(classCourseVo);
-        return BaseResponse.ok(null);
+    public BaseResponse<ClassCourseVo> create(@RequestBody ClassCourseVo classCourseVo) {
+        return BaseResponse.ok(classCourseService.create(classCourseVo));
     }
     
     /**
      * 批量添加班级授课科目
      */
     @PostMapping("/batch")
-    public BaseResponse<Void> batchCreate(@RequestParam Long classId, @RequestBody List<Long> courseIds) {
-        classCourseService.batchCreate(classId, courseIds);
+    @RequirePermission(Phase1Permissions.CLASS_COURSE_WRITE)
+    public BaseResponse<Void> batchCreate(@RequestParam Long classId,
+                                          @RequestParam String academicYear,
+                                          @RequestParam Integer semester,
+                                          @RequestBody List<Long> courseIds) {
+        classCourseService.batchCreate(classId, courseIds, academicYear, semester);
         return BaseResponse.ok(null);
     }
     
@@ -88,9 +91,8 @@ public class ClassCourseController {
      */
     @PutMapping("/{id}")
     @RequirePermission(Phase1Permissions.CLASS_COURSE_WRITE)
-    public BaseResponse<Void> update(@PathVariable Long id, @RequestBody ClassCourseVo classCourseVo) {
-        classCourseService.update(id, classCourseVo);
-        return BaseResponse.ok(null);
+    public BaseResponse<ClassCourseVo> update(@PathVariable Long id, @RequestBody ClassCourseVo classCourseVo) {
+        return BaseResponse.ok(classCourseService.update(id, classCourseVo));
     }
     
     /**
@@ -107,6 +109,7 @@ public class ClassCourseController {
      * 批量删除班级授课科目
      */
     @DeleteMapping("/batch")
+    @RequirePermission(Phase1Permissions.CLASS_COURSE_WRITE)
     public BaseResponse<Void> batchDelete(@RequestBody List<Long> ids) {
         classCourseService.batchDelete(ids);
         return BaseResponse.ok(null);

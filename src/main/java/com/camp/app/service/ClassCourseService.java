@@ -29,17 +29,17 @@ public interface ClassCourseService {
     /**
      * 添加班级授课科目
      */
-    void create(ClassCourseVo classCourseVo);
+    ClassCourseVo create(ClassCourseVo classCourseVo);
     
     /**
-     * 批量添加班级授课科目
+     * 批量添加班级授课科目。学年、学期必填，否则无法满足唯一键。
      */
-    void batchCreate(Long classId, List<Long> courseIds);
+    void batchCreate(Long classId, List<Long> courseIds, String academicYear, Integer semester);
     
     /**
      * 更新班级授课科目
      */
-    void update(Long id, ClassCourseVo classCourseVo);
+    ClassCourseVo update(Long id, ClassCourseVo classCourseVo);
     
     /**
      * 删除班级授课科目

@@ -4,10 +4,11 @@ info:
   version: 1.0.1
   description: |
     前缀 /api/v1。响应 {code,message,data,timestamp}。
-    开发态（profile=dev 或 camp.dev-auth.enabled=true）使用
+    开发态（profile=h2、profile=dev 或 camp.dev-auth.enabled=true）使用
     Authorization: Bearer dev-ADMIN|dev-ACADEMIC|dev-TEACHER|dev-STUDENT，
     或请求头 X-Dev-Role。可选 X-Dev-User-Id、X-Dev-Class-Ids、X-Dev-Grade-Ids。
-    考试、访客、短信找回不在本文件。
+    写路径成功时 data 返回保存后的对象。文件与考试见 openapi-phase2.yaml。
+    访客、短信、待办不在本文件。
 servers:
   - url: http://localhost:8080/api/v1
 paths:
@@ -119,7 +120,37 @@ paths:
     get: { summary: 教务年级授权, responses: { "200": { description: OK } } }
     put: { summary: 覆盖教务年级, responses: { "200": { description: OK } } }
   /files/upload:
-    post: { summary: 上传文件, responses: { "200": { description: OK } } }
+    post:
+      summary: 上传文件，返回 fileId 与 url
+      description: multipart 字段 file。可选 purpose=AVATAR|ANNOUNCEMENT|OTHER。策略见 FILE_STORAGE.md
+      responses: { "200": { description: OK } }
+  /files/{fileId}:
+    parameters: [{ name: fileId, in: path, required: true, schema: { type: integer } }]
+    get: { summary: 下载或内联打开，需登录, responses: { "200": { description: 文件字节 } } }
+    delete: { summary: 上传者或 ADMIN 删除, responses: { "200": { description: OK } } }
+  /users:
+    get: { summary: 用户列表。教务只看授权范围内账号, responses: { "200": { description: OK } } }
+    post:
+      summary: 创建用户。password 仅此时生效
+      responses: { "200": { description: 返回用户，不含密码 } }
+  /users/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    get: { summary: 用户详情, responses: { "200": { description: OK } } }
+    put: { summary: 更新用户。忽略 password, responses: { "200": { description: OK } } }
+    delete: { summary: 删除。被引用时 409, responses: { "200": { description: OK } } }
+  /users/{id}/status:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    put: { summary: 启停 status=0|1, responses: { "200": { description: OK } } }
+  /attendances/records/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    put: { summary: 修改异常明细或销假, responses: { "200": { description: OK } } }
+    delete: { summary: 删除异常明细, responses: { "200": { description: OK } } }
+  /announcements/{id}/top:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    put: { summary: 置顶，需要 announcement:top, responses: { "200": { description: OK } } }
+  /announcements/{id}/withdraw:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    put: { summary: 撤回, responses: { "200": { description: OK } } }
 components:
   securitySchemes:
     devBearer:

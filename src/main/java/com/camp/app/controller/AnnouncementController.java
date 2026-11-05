@@ -47,15 +47,13 @@ public class AnnouncementController {
 
     @PostMapping
     @RequirePermission(Phase1Permissions.ANNOUNCEMENT_PUBLISH)
-    public BaseResponse<Void> create(@RequestBody AnnouncementVo announcement) {
-        announcementService.create(announcement);
-        return BaseResponse.ok(null);
+    public BaseResponse<AnnouncementVo> create(@RequestBody AnnouncementVo announcement) {
+        return BaseResponse.ok(announcementService.create(announcement));
     }
 
     @PutMapping("/{id}")
-    public BaseResponse<Void> update(@PathVariable Long id, @RequestBody AnnouncementVo announcement) {
-        announcementService.update(id, announcement);
-        return BaseResponse.ok(null);
+    public BaseResponse<AnnouncementVo> update(@PathVariable Long id, @RequestBody AnnouncementVo announcement) {
+        return BaseResponse.ok(announcementService.update(id, announcement));
     }
 
     @PutMapping("/{id}/top")

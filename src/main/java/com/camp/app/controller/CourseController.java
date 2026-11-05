@@ -45,16 +45,14 @@ public class CourseController {
 
     @PostMapping
     @RequirePermission(Phase1Permissions.COURSE_WRITE)
-    public BaseResponse<Void> create(@RequestBody CourseVo course) {
-        courseService.create(course);
-        return BaseResponse.ok(null);
+    public BaseResponse<CourseVo> create(@RequestBody CourseVo course) {
+        return BaseResponse.ok(courseService.create(course));
     }
 
     @PutMapping("/{id}")
     @RequirePermission(Phase1Permissions.COURSE_WRITE)
-    public BaseResponse<Void> update(@PathVariable Long id, @RequestBody CourseVo course) {
-        courseService.update(id, course);
-        return BaseResponse.ok(null);
+    public BaseResponse<CourseVo> update(@PathVariable Long id, @RequestBody CourseVo course) {
+        return BaseResponse.ok(courseService.update(id, course));
     }
 
     @DeleteMapping("/{id}")

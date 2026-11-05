@@ -62,16 +62,14 @@ public class StudentController {
 
     @PostMapping
     @RequirePermission(Phase1Permissions.STUDENT_WRITE)
-    public BaseResponse<Void> createStudent(@RequestBody StudentVo student) {
-        studentService.create(student);
-        return BaseResponse.ok(null);
+    public BaseResponse<StudentVo> createStudent(@RequestBody StudentVo student) {
+        return BaseResponse.ok(studentService.create(student));
     }
 
     @PutMapping("/{id}")
     @RequirePermission(Phase1Permissions.STUDENT_WRITE)
-    public BaseResponse<Void> updateStudent(@PathVariable Long id, @RequestBody StudentVo student) {
-        studentService.update(id, student);
-        return BaseResponse.ok(null);
+    public BaseResponse<StudentVo> updateStudent(@PathVariable Long id, @RequestBody StudentVo student) {
+        return BaseResponse.ok(studentService.update(id, student));
     }
 
     @DeleteMapping("/{id}")

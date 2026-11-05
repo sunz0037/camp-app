@@ -10,7 +10,7 @@
 
 `db/h2/schema.sql` 和 `db/h2/seed.sql` 不是第二套设计，禁止在 H2 里单独加表、改字段或改唯一键。
 
-1. 改表结构以 `db/migration/` 为权威（空库 `V1__phase1_schema.sql`，旧库 `V2__phase1_legacy_align.sql`，二期增量 `V3__phase2_schema.sql`）。
+1. 改表结构以 `db/migration/` 为权威（空库 `V1__phase1_schema.sql`，旧库 `V2__phase1_legacy_align.sql`，二期表 `V3__phase2_schema.sql`，审计事件码 `V4__phase2_audit_events.sql`）。
 2. 每次改完 migration 或 `db/seed/`，同一提交里把结果转译到 `db/h2/`。H2 的 `schema.sql` 是空库执行 V1 再执行 V3 之后的全量，不是只含首期。
 3. H2 只保留方言差异，不表达另一套模型。
 
@@ -114,6 +114,12 @@ id 若不是这组，用请求头 `X-Dev-User-Id` 指到种子用户。`h2` prof
 二期造数在首期之后：`student02`（学号 S20260002）、一场数学期中测验和两行成绩、两条访客、`student01` 的 `campus-blue` 偏好、教师网盘目录和两个文件（其中一个以 `READ` 分享给 student01）、一行密码策略（`history_size = 5`）。
 
 家长若要登录，另建一个 `STUDENT` 账号即可，没有家长绑定表。演示脚本没有另造家长账号。
+
+## 二期表与审计码
+
+二期表以已合入的 `db/migration/V3__phase2_schema.sql` 为准：`edu_exams`、`edu_exam_scores`、`oa_visitors`、`oa_visitor_logs`、`oa_files`、`oa_file_shares`、`sys_user_preferences`、密码策略与密码历史。接口直接用这些表，不另建 `exam_schedules`、`exam_scores`、`sys_files`、`sys_user_settings`。
+
+`db/migration/V4__phase2_audit_events.sql` 只把 `sys_audit_logs.event_code` 从 1–6 放宽到 1–11，不改 V3 的列。H2 的同一约束写在 `db/h2/schema.sql`，不要把 V4 直接丢给 H2。
 
 ## 和 JPA 的关系
 

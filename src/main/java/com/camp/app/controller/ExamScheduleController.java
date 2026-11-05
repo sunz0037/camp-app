@@ -4,6 +4,9 @@ import com.camp.app.api.BaseResponse;
 import com.camp.app.api.PageResult;
 import com.camp.app.model.ExamScheduleVo;
 import com.camp.app.service.ExamScheduleService;
+import com.camp.app.security.AuthContext;
+import com.camp.app.security.Phase1Permissions;
+import com.camp.app.security.RequirePermission;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -14,7 +17,7 @@ import org.springframework.web.bind.annotation.*;
  */
 @Slf4j
 @RestController
-@ConditionalOnProperty(name = "camp.phase2.enabled", havingValue = "true")
+@ConditionalOnProperty(name = "camp.phase2.exam.enabled", havingValue = "true")
 @RequestMapping("/api/v1/exam-schedules")
 @RequiredArgsConstructor
 public class ExamScheduleController {
@@ -51,20 +54,21 @@ public class ExamScheduleController {
      * 创建考试安排
      */
     @PostMapping
+    @RequirePermission(Phase1Permissions.COURSE_WRITE)
     public BaseResponse<ExamScheduleVo> create(@RequestBody ExamScheduleVo vo,
                                                 @RequestHeader(value = "X-User-Id", required = false) Long userId) {
-        // 从请求头获取用户ID（前端会在请求头中传递）
-        if (userId == null) {
-            return BaseResponse.error(400, "用户ID不能为空，请先登录");
+        Long actorId = userId != null ? userId : AuthContext.userId();
+        if (actorId == null) {
+            return BaseResponse.error(401, "未登录");
         }
-        ExamScheduleVo created = examScheduleService.create(vo, userId);
-        return BaseResponse.ok(created);
+        return BaseResponse.ok(examScheduleService.create(vo, actorId));
     }
     
     /**
      * 更新考试安排
      */
     @PutMapping("/{id}")
+    @RequirePermission(Phase1Permissions.COURSE_WRITE)
     public BaseResponse<ExamScheduleVo> update(@PathVariable Long id, @RequestBody ExamScheduleVo vo) {
         ExamScheduleVo updated = examScheduleService.update(id, vo);
         return BaseResponse.ok(updated);
@@ -74,6 +78,7 @@ public class ExamScheduleController {
      * 删除考试安排
      */
     @DeleteMapping("/{id}")
+    @RequirePermission(Phase1Permissions.COURSE_WRITE)
     public BaseResponse<Void> delete(@PathVariable Long id) {
         examScheduleService.delete(id);
         return BaseResponse.ok(null);
@@ -83,6 +88,7 @@ public class ExamScheduleController {
      * 取消考试安排
      */
     @PutMapping("/{id}/cancel")
+    @RequirePermission(Phase1Permissions.COURSE_WRITE)
     public BaseResponse<ExamScheduleVo> cancel(@PathVariable Long id) {
         ExamScheduleVo canceled = examScheduleService.cancel(id);
         return BaseResponse.ok(canceled);

@@ -9,4 +9,7 @@ public class FileVo {
     private Long fileId;
     private String url;
     private String originalName;
+    private String contentType;
+    private Long sizeBytes;
+    private String purpose;
 }
