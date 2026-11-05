@@ -1,5 +1,7 @@
 # Wave B — 考试与成绩（草案）
 
+> 现行契约以 `project_doc/api/api-contract-v1-phase2.md` 为准。`/api/v1/exams` 与 `/api/v1/exam-scores` 已接到同一套 `edu_exams` / `edu_exam_scores`，不另建表。下面是起草时的清单。
+
 本文件只定 DDL 和接口清单。本轮不实现控制器，不把表放进 H2 启动脚本，也不把 `camp.phase2.enabled` 设为 true。
 
 现有 `ExamScheduleController`（`/api/v1/exam-schedules`）和 `ScoreController`（`/api/v1/scores`）在该开关打开后才会加载，且没有首期 Data Scope。实现 Wave B 时以本文为准，不要直接打开旧控制器。建议成绩路径用 `/api/v1/exam-scores`，避免和旧的 `/api/v1/scores` 并存。

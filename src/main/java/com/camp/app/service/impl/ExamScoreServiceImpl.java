@@ -2,14 +2,18 @@ package com.camp.app.service.impl;
 
 import com.camp.app.api.BizException;
 import com.camp.app.api.PageResult;
+import com.camp.app.entity.Course;
 import com.camp.app.entity.ExamSchedule;
 import com.camp.app.entity.ExamScore;
 import com.camp.app.entity.Student;
+import com.camp.app.entity.User;
 import com.camp.app.model.DataScope;
 import com.camp.app.model.ExamScoreVo;
+import com.camp.app.repository.CourseRepository;
 import com.camp.app.repository.ExamScheduleRepository;
 import com.camp.app.repository.ExamScoreRepository;
 import com.camp.app.repository.StudentRepository;
+import com.camp.app.repository.UserRepository;
 import com.camp.app.service.AccessService;
 import com.camp.app.service.ExamScoreService;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +24,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -33,12 +38,15 @@ public class ExamScoreServiceImpl implements ExamScoreService {
     private final ExamScoreRepository examScoreRepository;
     private final ExamScheduleRepository examScheduleRepository;
     private final StudentRepository studentRepository;
+    private final UserRepository userRepository;
+    private final CourseRepository courseRepository;
     private final AccessService accessService;
 
     @Override
     @Transactional(readOnly = true)
     public PageResult<ExamScoreVo> list(long page, long size, Long studentId, Long courseId, Long examScheduleId,
-                                        String semester, String academicYear, String examType) {
+                                        String semester, String academicYear, String examType,
+                                        Long classId, String className, String keyword) {
         if (examType != null && !examType.isBlank()) {
             throw BizException.badRequest("edu_exam_scores 不支持按考试类型筛选");
         }
@@ -54,14 +62,24 @@ public class ExamScoreServiceImpl implements ExamScoreService {
         }
         Map<Long, ExamSchedule> exams = examScheduleRepository.findAll().stream()
                 .collect(Collectors.toMap(ExamSchedule::getId, Function.identity()));
+        Map<Long, Student> students = studentRepository.findAll().stream()
+                .collect(Collectors.toMap(Student::getId, Function.identity()));
+        Map<Long, User> users = userRepository.findAll().stream()
+                .collect(Collectors.toMap(User::getId, Function.identity()));
+        Map<Long, Course> courses = courseRepository.findAll().stream()
+                .collect(Collectors.toMap(Course::getId, Function.identity()));
+        String classNameKey = blank(className);
+        String key = blank(keyword);
         Long filterStudent = studentId;
         List<ExamScoreVo> all = examScoreRepository.findAll().stream()
                 .filter(row -> filterStudent == null || filterStudent.equals(row.getStudentId()))
                 .filter(row -> examScheduleId == null || examScheduleId.equals(row.getExamId()))
                 .filter(row -> visible(scope, row.getStudentId()))
                 .filter(row -> matchesExam(exams.get(row.getExamId()), courseId, semester, academicYear))
+                .filter(row -> matchesStudent(students.get(row.getStudentId()), classId, classNameKey))
+                .filter(row -> key == null || matchesKeyword(key, students.get(row.getStudentId()), users, exams.get(row.getExamId()), courses))
                 .sorted(Comparator.comparing(ExamScore::getId, Comparator.reverseOrder()))
-                .map(row -> toVo(row, exams.get(row.getExamId())))
+                .map(row -> toVo(row, exams.get(row.getExamId()), students.get(row.getStudentId()), users, courses))
                 .toList();
         int from = (int) Math.min((page - 1) * size, all.size());
         int to = (int) Math.min(from + size, all.size());
@@ -214,22 +232,103 @@ public class ExamScoreServiceImpl implements ExamScoreService {
         return 0;
     }
 
+    private boolean matchesStudent(Student student, Long classId, String className) {
+        if (classId != null && (student == null || !classId.equals(student.getClassId()))) {
+            return false;
+        }
+        return className == null || (student != null && className.equals(student.getClassName()));
+    }
+
+    private boolean matchesKeyword(String key, Student student, Map<Long, User> users, ExamSchedule exam, Map<Long, Course> courses) {
+        if (student != null && contains(student.getStudentNo(), key)) {
+            return true;
+        }
+        if (student != null && contains(student.getClassName(), key)) {
+            return true;
+        }
+        User user = student == null || student.getUserId() == null ? null : users.get(student.getUserId());
+        if (user != null && contains(user.getRealName(), key)) {
+            return true;
+        }
+        if (exam != null && contains(exam.getTitle(), key)) {
+            return true;
+        }
+        Course course = exam == null ? null : courses.get(exam.getCourseId());
+        return course != null && contains(course.getCourseName(), key);
+    }
+
+    private boolean contains(String value, String key) {
+        return value != null && value.toLowerCase(Locale.ROOT).contains(key.toLowerCase(Locale.ROOT));
+    }
+
+    private String blank(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String value = raw.trim();
+        return value.isEmpty() ? null : value;
+    }
+
     private ExamScoreVo toVo(ExamScore score, ExamSchedule exam) {
+        Student student = score.getStudentId() == null ? null : studentRepository.findById(score.getStudentId()).orElse(null);
+        Map<Long, User> users = student == null || student.getUserId() == null
+                ? Map.of()
+                : userRepository.findById(student.getUserId()).map(user -> Map.of(user.getId(), user)).orElse(Map.of());
+        Map<Long, Course> courses = exam == null || exam.getCourseId() == null
+                ? Map.of()
+                : courseRepository.findById(exam.getCourseId()).map(course -> Map.of(course.getId(), course)).orElse(Map.of());
+        return toVo(score, exam, student, users, courses);
+    }
+
+    private ExamScoreVo toVo(ExamScore score, ExamSchedule exam, Student student, Map<Long, User> users, Map<Long, Course> courses) {
         ExamScoreVo vo = new ExamScoreVo();
         vo.setId(score.getId());
         vo.setStudentId(score.getStudentId());
         vo.setExamScheduleId(score.getExamId());
         vo.setScore(score.getScore() == null ? null : score.getScore().doubleValue());
         vo.setGradePoint(score.getScore() == null ? null : gradePoint(score.getScore().doubleValue()));
+        vo.setGradeLevel(score.getScore() == null ? null : gradeLevel(score.getScore().doubleValue()));
         vo.setRemark(score.getRemark());
         vo.setCreatedAt(score.getCreatedAt());
         vo.setUpdatedAt(score.getUpdatedAt());
+        if (student != null) {
+            vo.setStudentNo(student.getStudentNo());
+            vo.setClassId(student.getClassId());
+            vo.setClassName(student.getClassName());
+            if (student.getUserId() != null) {
+                User user = users.get(student.getUserId());
+                if (user != null) {
+                    vo.setStudentName(user.getRealName());
+                }
+            }
+        }
         if (exam != null) {
+            vo.setExamName(exam.getTitle());
             vo.setCourseId(exam.getCourseId());
             vo.setAcademicYear(exam.getAcademicYear());
             vo.setSemester(exam.getSemester() == null ? null : String.valueOf(exam.getSemester()));
             vo.setExamDate(exam.getExamDate());
+            Course course = courses.get(exam.getCourseId());
+            if (course != null) {
+                vo.setCourseName(course.getCourseName());
+            }
         }
         return vo;
+    }
+
+    private String gradeLevel(double score) {
+        if (score >= 90) {
+            return "A";
+        }
+        if (score >= 80) {
+            return "B";
+        }
+        if (score >= 70) {
+            return "C";
+        }
+        if (score >= 60) {
+            return "D";
+        }
+        return "E";
     }
 }

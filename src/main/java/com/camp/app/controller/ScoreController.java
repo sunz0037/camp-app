@@ -28,7 +28,7 @@ public class ScoreController {
                                                     @RequestParam(required = false) String semester,
                                                     @RequestParam(required = false) String academicYear,
                                                     @RequestParam(required = false) String examType) {
-        return BaseResponse.ok(examScoreService.list(page, size, studentId, courseId, examScheduleId, semester, academicYear, examType));
+        return BaseResponse.ok(examScoreService.list(page, size, studentId, courseId, examScheduleId, semester, academicYear, examType, null, null, null));
     }
 
     @GetMapping("/{id}")

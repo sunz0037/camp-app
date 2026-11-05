@@ -37,11 +37,20 @@
 
 ### N3 考试成绩
 
-`camp.phase2.exam.enabled=true`（默认开）。写权限复用 `course:write`（管理员、教务）。表是 `edu_exams`、`edu_exam_scores`。路径仍是 #7 的 `/exam-schedules`、`/scores`，不另开 #6 的 `/exams`、`/exam-scores`。
+`camp.phase2.exam.enabled=true`（默认开）。写权限复用 `course:write`（管理员、教务）。表是 `edu_exams`、`edu_exam_scores`。`/exams` 与 `/exam-schedules`、`/exam-scores` 与 `/scores` 是同一套服务，不双写。
 
-创建考试必填 `examName`、`examDate`、`classId`、`courseId`、`academicYear`、`semester`（1 或 2）。同一班级、课程、日期、名称冲突返回 409。已有成绩时删除返回 409。
+| 前端路径 | 旧路径 | 说明 |
+| --- | --- | --- |
+| `GET/POST /exams`，`GET/PUT/DELETE /exams/{id}` | `/exam-schedules` | 同一张 `edu_exams`。`PUT /exams/{id}/cancel` 与旧取消一样返回 422 |
+| `GET/POST /exam-scores`，`GET/PUT/DELETE /exam-scores/{id}` | `/scores` | 同一张 `edu_exam_scores`。`examId` 即 `examScheduleId` |
 
-录入成绩必填 `examScheduleId`（即 `edu_exams.id`）、`studentId`、`score`（0–100）。学生只能看本人。同一场考试同一学生重复返回 409。响应里的 `gradePoint` 按 90/80/70/60 换成 4/3/2/1/0，**不入库，也不是 GPA 汇总**。
+`/exams` 接受前端字段：`name`→考试名，`startTime`→考试日期，`subject`→按课程名唯一匹配 `courseId`，`className`（可加 `gradeName`）→按班级名唯一匹配 `classId`。没传学年学期时，按考试日期补：9 月到次年 1 月为第一学期，2 月到 8 月为第二学期。旧路径不补这些缺省，缺了仍是 400。
+
+创建考试在旧路径上必填 `examName`、`examDate`、`classId`、`courseId`、`academicYear`、`semester`（1 或 2）。同一班级、课程、日期、名称冲突返回 409。已有成绩时删除返回 409。
+
+录入成绩必填 `examScheduleId`（即 `edu_exams.id`，别名 `examId`）、`studentId`、`score`（0–100）。学生只能看本人。同一场考试同一学生重复返回 409。响应里的 `gradePoint` 按 90/80/70/60 换成 4/3/2/1/0，`gradeLevel` 换成 A/B/C/D/E，**都不入库，也不是 GPA 汇总**。请求里的 `gradeLevel` 忽略。
+
+列表会带上课程名、班级名、年级名、学生姓名学号，方便页面展示。关键字可匹配标题、课程名、班级名；成绩还可匹配学生姓名和学号。`/exams` 可用 `grade`（年级名称）、`classId`、`courseId` 收窄。`examType` 筛选仍是 400。`isPublic=true` 或 `status=CANCELLED` 得到空列表，因为这些列不存在，现有行都视为不公开、未取消。
 
 ### N4 来访、主题、改密（来自 #6，接到 #4 的表）
 
@@ -53,6 +62,8 @@
 
 来访：学生 403。教师可登记，并查看本人登记或本人被访的单。审批、入校、离校只给管理员和教务。新建固定 `PENDING`。列表上的电话和证件号脱敏。旧 `visitor_registrations` 控制器仍由 `camp.phase2.visitor.enabled=false` 关闭，避免和本路径抢映射。没有公开预约。
 
+创建时 `reason`、`visitPurpose` 写入 `purpose`，`idNo` 写入证件号。被访人仍要 `hostUserId`；只传 `hostName` 返回 400「被访人需要 hostUserId，暂不按姓名解析」，不按姓名查用户。
+
 ## 明确不做（PHASE2-BLOCKED）
 
 | 项 | 原因 |
@@ -60,8 +71,8 @@
 | 公开预约、门岗独立端点、`LOGISTICS` | 来访只给已登录的四档角色，不新增角色 |
 | 短信验证码、公开找回 | `camp.sms.enabled=false`。密码策略已由 #5 接管 |
 | 分享的增删改、目录分享级联、对象存储以外的实现 | 列表、建目录、按已有 `oa_file_shares` 读取已在 `phase2-files.md`。不写分享，也不做 S3 |
-| 考试类型、公开标记、取消状态、`grade_point` 列 | `edu_exams` 没有这些列。`PUT /exam-schedules/{id}/cancel` 返回 422 |
-| #6 的 `/exams`、`/exam-scores` | 与 `/exam-schedules`、`/scores` 重复，不保留第二套控制器 |
+| 考试类型、公开标记、取消状态、结束时间、备注、`grade_point` 列 | `edu_exams` 没有这些列。写入时忽略（取消标记除外，返回 422）。`PUT /exams/{id}/cancel` 与 `PUT /exam-schedules/{id}/cancel` 都是 422 |
+| 按被访人姓名解析 `hostUserId` | 来访创建只认 id。`hostName` 不能代替 `hostUserId` |
 | 独立 `/todos`、GPA、`/statistics/**` | 未做 |
 | 教师录入本班成绩 | 写入口是 `course:write`，教师没有该权限 |
 

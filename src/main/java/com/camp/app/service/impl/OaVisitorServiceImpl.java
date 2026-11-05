@@ -188,6 +188,9 @@ public class OaVisitorServiceImpl implements OaVisitorService {
             row.setHostUserId(host.getId());
         }
         if (creating && row.getHostUserId() == null) {
+            if (vo.getHostName() != null && !vo.getHostName().isBlank()) {
+                throw BizException.badRequest("被访人需要 hostUserId，暂不按姓名解析");
+            }
             throw BizException.badRequest("被访人不能为空");
         }
         if (vo.getAppointmentTime() != null) {

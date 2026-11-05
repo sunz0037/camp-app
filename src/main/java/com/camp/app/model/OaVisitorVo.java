@@ -1,5 +1,6 @@
 package com.camp.app.model;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -21,4 +22,16 @@ public class OaVisitorVo {
     private Long createdBy;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+
+    /** 前端新增来访把事由放在 reason。 */
+    @JsonAlias({"reason", "visitPurpose"})
+    public void setPurpose(String purpose) {
+        this.purpose = purpose;
+    }
+
+    /** 前端证件号字段是 idNo。响应仍用 idCard。 */
+    @JsonAlias({"idNo", "idNumber", "certificateNo"})
+    public void setIdCard(String idCard) {
+        this.idCard = idCard;
+    }
 }
