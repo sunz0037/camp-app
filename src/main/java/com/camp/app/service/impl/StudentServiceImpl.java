@@ -7,6 +7,7 @@ import com.camp.app.entity.Class;
 import com.camp.app.entity.User;
 import com.camp.app.entity.Grade;
 import com.camp.app.model.DataScope;
+import com.camp.app.model.FileVo;
 import com.camp.app.model.ImportResultVo;
 import com.camp.app.model.StudentVo;
 import com.camp.app.model.UserVo;
@@ -16,6 +17,7 @@ import com.camp.app.repository.GradeRepository;
 import com.camp.app.security.AuthContext;
 import com.camp.app.service.AccessService;
 import com.camp.app.service.AuditLogService;
+import com.camp.app.service.FileStorageService;
 import com.camp.app.service.StudentService;
 import com.camp.app.service.UserService;
 import com.camp.app.util.BeanMapper;
@@ -30,6 +32,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import jakarta.persistence.criteria.Predicate;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -45,6 +48,7 @@ public class StudentServiceImpl implements StudentService {
     private final UserService userService;
     private final AccessService accessService;
     private final AuditLogService auditLogService;
+    private final FileStorageService fileStorageService;
 
     @Override
     public PageResult<StudentVo> list(long page, long size, String grade, String className, String major, String keyword) {
@@ -433,6 +437,15 @@ public class StudentServiceImpl implements StudentService {
     }
 
     @Override
+    @Transactional
+    public ImportResultVo importFromFile(Long fileId) {
+        if (fileId == null) {
+            throw BizException.badRequest("fileId 不能为空");
+        }
+        return batchImport(fileStorageService.readUtf8(fileId));
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public String exportCsv() {
         StringBuilder builder = new StringBuilder("studentNo,realName,classId,className,phone,idCard,status\n");
@@ -447,6 +460,18 @@ public class StudentServiceImpl implements StudentService {
                 .append('\n'));
         auditLogService.record("STUDENT_EXPORT", AuthContext.userId(), "STUDENT", null, "export", true);
         return builder.toString();
+    }
+
+    @Override
+    @Transactional
+    public FileVo exportStored() {
+        String csv = exportCsv();
+        return fileStorageService.storeBytes(
+                AuthContext.userId(),
+                "STUDENT_EXPORT",
+                "students.csv",
+                "text/csv",
+                csv.getBytes(StandardCharsets.UTF_8));
     }
 
     private String nullToEmpty(String value) {

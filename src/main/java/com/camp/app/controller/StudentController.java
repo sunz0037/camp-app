@@ -4,6 +4,8 @@ import com.camp.app.api.BaseResponse;
 import com.camp.app.api.PageResult;
 import com.camp.app.api.Paging;
 import com.camp.app.model.EmergencyContactVo;
+import com.camp.app.model.FileIdRequest;
+import com.camp.app.model.FileVo;
 import com.camp.app.model.ImportResultVo;
 import com.camp.app.model.StudentVo;
 import com.camp.app.security.Phase1Permissions;
@@ -49,10 +51,22 @@ public class StudentController {
         return BaseResponse.ok(studentService.batchImport(csv));
     }
 
+    @PostMapping("/import-file")
+    @RequirePermission(Phase1Permissions.STUDENT_IMPORT)
+    public BaseResponse<ImportResultVo> importFile(@RequestBody FileIdRequest request) {
+        return BaseResponse.ok(studentService.importFromFile(request == null ? null : request.getFileId()));
+    }
+
     @GetMapping("/export")
     @RequirePermission(Phase1Permissions.STUDENT_EXPORT)
     public ResponseEntity<String> export() {
         return csv(studentService.exportCsv(), "students.csv");
+    }
+
+    @GetMapping("/export-file")
+    @RequirePermission(Phase1Permissions.STUDENT_EXPORT)
+    public BaseResponse<FileVo> exportFile() {
+        return BaseResponse.ok(studentService.exportStored());
     }
 
     @GetMapping("/{id}")

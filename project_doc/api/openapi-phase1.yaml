@@ -119,10 +119,16 @@ paths:
     parameters: [{ name: userId, in: path, required: true, schema: { type: integer } }]
     get: { summary: 教务年级授权, responses: { "200": { description: OK } } }
     put: { summary: 覆盖教务年级, responses: { "200": { description: OK } } }
+  /files:
+    get:
+      summary: 网盘列表
+      responses:
+        "200":
+          description: 见 phase2-files.md
   /files/upload:
     post:
       summary: 上传文件，返回 fileId 与 url
-      description: multipart 字段 file。可选 purpose=AVATAR|ANNOUNCEMENT|OTHER。策略见 FILE_STORAGE.md
+      description: multipart 字段 file。可选 purpose。策略见 phase2-files.md
       responses: { "200": { description: OK } }
   /files/{fileId}:
     parameters: [{ name: fileId, in: path, required: true, schema: { type: integer } }]

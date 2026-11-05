@@ -179,7 +179,10 @@
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
+| GET | `/files` | 登录用户的网盘列表。见 `phase2-files.md` |
 | POST | `/files/upload` | 登录用户；返回 `fileId, url`；用于头像/公告附件 |
+| POST | `/files/folders` | 建目录 |
+| GET | `/files/{fileId}` | 下载。头像和公告附件对登录用户开放，其余按拥有者、ADMIN 或已有分享 |
 | DELETE | `/files/{fileId}` | 上传者或 ADMIN |
 
 ---

@@ -1,6 +1,7 @@
 package com.camp.app.service;
 
 import com.camp.app.api.PageResult;
+import com.camp.app.model.FileVo;
 import com.camp.app.model.ImportResultVo;
 import com.camp.app.model.StudentVo;
 
@@ -15,6 +16,12 @@ public interface StudentService {
 
     ImportResultVo batchImport(String csv);
 
+    /** 从已上传的文件读取 CSV，再走 batchImport。 */
+    ImportResultVo importFromFile(Long fileId);
+
     String exportCsv();
+
+    /** 导出 CSV 并写入文件网盘，返回 fileId / url。 */
+    FileVo exportStored();
 }
 
