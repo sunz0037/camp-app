@@ -5,6 +5,7 @@ import com.camp.app.security.AuthContext;
 import com.camp.app.security.AuthPrincipal;
 import com.camp.app.security.JwtService;
 import com.camp.app.security.RequirePermission;
+import com.camp.app.security.SessionControl;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.http.HttpServletRequest;
@@ -20,9 +21,12 @@ import java.nio.charset.StandardCharsets;
 @Component
 @RequiredArgsConstructor
 public class AuthInterceptor implements HandlerInterceptor {
+    static final String AUTH_ERROR = "camp.auth.error";
+
     private final JwtService jwtService;
     private final ObjectMapper objectMapper;
     private final DevAuthProperties devAuthProperties;
+    private final SessionControl sessionControl;
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
@@ -42,9 +46,15 @@ public class AuthInterceptor implements HandlerInterceptor {
             principal = bindIfPresent(request);
         }
         if (principal == null) {
-            String message = devAuthProperties.isEnabled()
-                    ? "未登录。开发态请使用 Authorization: Bearer dev-ADMIN|dev-ACADEMIC|dev-TEACHER|dev-STUDENT，或请求头 X-Dev-Role"
-                    : "未登录";
+            Object detail = request.getAttribute(AUTH_ERROR);
+            String message;
+            if (detail != null) {
+                message = detail.toString();
+            } else if (devAuthProperties.isEnabled()) {
+                message = "未登录。开发态请使用 Authorization: Bearer dev-ADMIN|dev-ACADEMIC|dev-TEACHER|dev-STUDENT，或请求头 X-Dev-Role";
+            } else {
+                message = "未登录";
+            }
             write(response, 401, message);
             return false;
         }
@@ -99,10 +109,16 @@ public class AuthInterceptor implements HandlerInterceptor {
         }
         try {
             Claims claims = jwtService.parse(token);
+            Long userId = Long.valueOf(claims.getSubject());
+            if (!sessionControl.accepts(userId, claims.get("ver"))) {
+                request.setAttribute(AUTH_ERROR, "登录已失效，请重新登录");
+                return null;
+            }
             AuthPrincipal principal = jwtService.toPrincipal(claims);
             AuthContext.set(principal);
             return principal;
         } catch (Exception ex) {
+            request.setAttribute(AUTH_ERROR, "访问令牌无效或已过期");
             return null;
         }
     }

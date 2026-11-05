@@ -38,4 +38,8 @@ public class BizException extends RuntimeException {
     public static BizException unprocessable(String message) {
         return new BizException(422, message);
     }
+
+    public static BizException locked(String message) {
+        return new BizException(423, message);
+    }
 }

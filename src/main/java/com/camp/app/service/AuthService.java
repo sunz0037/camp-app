@@ -16,9 +16,11 @@ public interface AuthService {
 
     void logout(String refreshToken);
 
-    void changePassword(Long userId, String oldPassword, String newPassword);
+    LoginResponse changePassword(Long userId, String oldPassword, String newPassword);
 
-    void changePassword(Long userId, ChangePasswordRequest request);
+    LoginResponse changePassword(Long userId, ChangePasswordRequest request);
+
+    void adminUnlock(Long operatorId, Long userId);
 
     LoginResponse.UserInfo getCurrentUser(Long userId);
 
