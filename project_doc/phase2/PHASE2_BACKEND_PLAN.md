@@ -79,3 +79,14 @@
 - 管理员重置的临时口令以 `FORCE$` 前缀加 bcrypt 落库，下次登录 `isFirstLogin=true`，必须再改密。不新增列。
 
 未做：Wave B 的接口与 seed、Wave C–E、把锁定计数和历史密码落表。
+
+上面这句是 Wave A 合入时的记录。考试、来访和下面的网盘已在后续 PR 落地。
+
+## 5. 本轮落地（Wave D）
+
+契约见 `project_doc/api/phase2-files.md`。没有新 migration，表仍是 `V3__phase2_schema.sql` 的 `oa_files` / `oa_file_shares`。
+
+- `GET /api/v1/files` 列表，`POST /api/v1/files/upload` 上传，`GET /api/v1/files/{fileId}` 下载，`POST /api/v1/files/folders` 建目录。
+- 字节走 `BlobStore`，默认本地目录 `camp.upload.dir`。
+- 公告附件、头像继续用 `/api/v1/files/{id}`。学生导入 `POST /students/import-file`，导出落盘 `GET /students/export-file`。
+- 已有分享可以读。不提供分享的增删改。

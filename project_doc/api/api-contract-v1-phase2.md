@@ -31,13 +31,9 @@
 
 ### N2 文件
 
-见 `FILE_STORAGE.md`。
+见 `FILE_STORAGE.md` 与 `phase2-files.md`。
 
-`POST /api/v1/files/upload`，`multipart` 字段 `file`，可选 `purpose=AVATAR|ANNOUNCEMENT|OTHER`。
-
-```json
-{ "fileId": 1, "url": "/api/v1/files/1", "originalName": "a.png", "contentType": "image/png", "sizeBytes": 3, "purpose": "AVATAR" }
-```
+`GET /api/v1/files` 列目录，`POST /api/v1/files/upload` 上传，`GET /api/v1/files/{fileId}` 下载。`purpose` 增加 `STUDENT_IMPORT`、`STUDENT_EXPORT`。公告附件和头像仍用 `/api/v1/files/{id}`；学生导入导出可以先落到这份文件再读回。
 
 ### N3 考试成绩
 
@@ -63,7 +59,7 @@
 | --- | --- |
 | 公开预约、门岗独立端点、`LOGISTICS` | 来访只给已登录的四档角色，不新增角色 |
 | 短信验证码、公开找回 | `camp.sms.enabled=false`。密码策略已由 #5 接管 |
-| 网盘目录、分享 | `oa_files` / `oa_file_shares` 已在库里。本接口只上传单个文件，不建目录、不写分享 |
+| 分享的增删改、目录分享级联、对象存储以外的实现 | 列表、建目录、按已有 `oa_file_shares` 读取已在 `phase2-files.md`。不写分享，也不做 S3 |
 | 考试类型、公开标记、取消状态、`grade_point` 列 | `edu_exams` 没有这些列。`PUT /exam-schedules/{id}/cancel` 返回 422 |
 | #6 的 `/exams`、`/exam-scores` | 与 `/exam-schedules`、`/scores` 重复，不保留第二套控制器 |
 | 独立 `/todos`、GPA、`/statistics/**` | 未做 |
