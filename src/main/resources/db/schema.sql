@@ -1,4 +1,11 @@
 -- ============================================
+-- 历史建表脚本，不再作为首期入口。
+-- 首期结构在仓库根目录：
+--   空库：db/migration/V1__phase1_schema.sql 然后 db/seed/phase1_demo.sql
+--   已执行过本文件的库：db/migration/V2__phase1_legacy_align.sql 然后 db/seed/phase1_demo.sql
+-- 本文件里的 exam_scores、visitor_registrations 为 phase:2，不要当作首期必跑。
+-- 说明见 db/README.md 与 project_doc/db/PHASE1_SCHEMA.md。
+-- ============================================
 -- 校园OA系统数据库表结构设计
 -- ============================================
 
