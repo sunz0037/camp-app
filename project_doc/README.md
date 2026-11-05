@@ -7,6 +7,11 @@
 ```
 project_doc/
 ├── README.md                    # 本文档
+├── phase2/                      # 二期计划与后置队列
+│   ├── PHASE2_BACKEND_PLAN.md   # 二期后台计划（历史 Wave）
+│   ├── WAVE_A_AUTH.md           # 密码与会话（已合入）
+│   ├── WAVE_B_EXAM.md           # 考试成绩草案（接口已由 #7 落地）
+│   └── REMAINING.md             # 库/API 后置队列（本轮不实现）
 ├── api/                         # API接口文档
 │   ├── API_DESIGN.md           # API设计文档
 │   ├── API_STATUS.md           # API实现状态
@@ -35,6 +40,10 @@ project_doc/
 
 ### 功能状态文档
 - **FEATURES_STATUS.md**: 功能与接口实现状态总览，包含后端接口和前端页面的实现情况
+
+### 二期（phase2/）
+- **phase2/REMAINING.md**: 库/API 后置队列（短信、报表聚合、主题 UI、年级班级拆页）。本轮不实现
+- **phase2/PHASE2_BACKEND_PLAN.md**: 二期后台计划（历史 Wave；后置项以 REMAINING.md 为准）
 
 ### API文档 (api/)
 - **API_DESIGN.md**: 详细的API接口设计文档，包含所有接口的请求/响应格式

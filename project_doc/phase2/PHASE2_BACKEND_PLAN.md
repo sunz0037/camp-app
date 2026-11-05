@@ -4,6 +4,8 @@
 > 仓库：https://github.com/sunz0037/camp-app  
 > 起点：`cursor/phase1-api-alignment-3865` @ `e2ea876`（含 #3 API；DDL 与 #2 同源）。  
 > 合入顺序仍：**先 [#2](https://github.com/sunz0037/camp-app/pull/2) 再 [#3](https://github.com/sunz0037/camp-app/pull/3)**（人工合并，本计划不自动 merge）。
+>
+> **后置队列**以 [REMAINING.md](./REMAINING.md) 为准。#4 DDL、#5 密码加固、#7 写路径 / 文件 / 考试 / 访客 / 主题 API、#9 网盘列表 / 建目录 / 下载已在 main。下文 Wave 表是当时的计划；文末「未做 Wave B–E」已过时，不要据此重做。
 
 ## 0. 首期收尾（执行前核对）
 
@@ -90,3 +92,5 @@
 - 字节走 `BlobStore`，默认本地目录 `camp.upload.dir`。
 - 公告附件、头像继续用 `/api/v1/files/{id}`。学生导入 `POST /students/import-file`，导出落盘 `GET /students/export-file`。
 - 已有分享可以读。不提供分享的增删改。
+
+仍后置的库/API 项（短信、报表聚合、主题 UI 消费、年级班级拆页评估）见 [REMAINING.md](./REMAINING.md)。本轮不实现这些后置项。不要重做上面的 Wave D，也不要给分享加增删改。
